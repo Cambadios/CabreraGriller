@@ -33,9 +33,9 @@ if (process.env.NODE_ENV !== 'production') {
 // Variables globales
 const PORT = process.env.PORT || 3000;
 
-// ========== ENDPOINTS ==========
+//ENDPOINTS 
 
-// Endpoint de salud (opcional)
+// Endpoint
 app.get('/health', async (_req, res, next) => {
   try {
     const dbOk = await pingDB();
@@ -51,7 +51,7 @@ app.get('/health', async (_req, res, next) => {
   }
 });
 
-// 🔹 Rutas MVC
+// Rutas MVC
 app.use('/api/auth', authRoutes);
 
 
@@ -73,7 +73,7 @@ app.use((req, res) => {
 // Manejo de errores global
 app.use(errorHandler);
 
-// ========== INICIO DEL SERVIDOR ==========
+//INICIO DEL SERVIDOR
 app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
   console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
