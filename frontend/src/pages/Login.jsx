@@ -1,3 +1,4 @@
+// src/pages/Login.jsx
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -18,7 +19,18 @@ const Login = () => {
 
     try {
       await login(alias, password);
-      navigate('/dashboard');
+
+      // 👇 OBTENEMOS EL USUARIO (asumiendo que lo guardas en localStorage en el AuthContext)
+      const usuario = JSON.parse(localStorage.getItem('usuario'));
+
+      if (usuario?.rol === 'ADMIN') {
+        navigate('/admin');
+      } else if (usuario?.rol === 'CAJERO') {
+        navigate('/cajero');
+      } else {
+        // Si por alguna razón no hay rol conocido, lo mando al login de nuevo
+        navigate('/login');
+      }
     } catch (err) {
       setError(err.message || 'Error al iniciar sesión');
     } finally {

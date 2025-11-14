@@ -1,78 +1,167 @@
 // backend/src/models/platoModel.js
-import { query } from '../db/db.js';
+import pool from '../db/db.js';
 
-// 📋 Obtener todos los platos activos
+// 📋 Listar platos
 export const getAllPlatos = async () => {
-  const { rows } = await query(
-    `SELECT 
-       id_plato,
-       nombre,
-       tipo_plato,
-       precio,
-       stock_actual,
-       estado
-     FROM platos
-     WHERE estado = TRUE
-     ORDER BY id_plato;`
-  );
+  const sql = `
+    SELECT
+      id_plato,
+      nombre,
+      tipo_plato,
+      precio,
+      stock_actual,
+      estado,
+      observaciones,
+      imagen_url,
+      creado_en,
+      actualizado_en
+    FROM platos
+    ORDER BY id_plato DESC;
+  `;
+  const { rows } = await pool.query(sql);
   return rows;
 };
 
-// 🔎 Obtener un plato por ID
+// 🔎 Obtener por ID
 export const getPlatoById = async (id) => {
-  const { rows } = await query(
-    `SELECT 
-       id_plato,
-       nombre,
-       tipo_plato,
-       precio,
-       stock_actual,
-       estado
-     FROM platos
-     WHERE id_plato = $1;`,
-    [id]
-  );
+  const sql = `
+    SELECT
+      id_plato,
+      nombre,
+      tipo_plato,
+      precio,
+      stock_actual,
+      estado,
+      observaciones,
+      imagen_url,
+      creado_en,
+      actualizado_en
+    FROM platos
+    WHERE id_plato = $1;
+  `;
+  const { rows } = await pool.query(sql, [id]);
   return rows[0] || null;
 };
 
-// ➕ Crear un nuevo plato
-export const createPlato = async ({ nombre, tipo_plato, precio, stock_actual }) => {
-  const { rows } = await query(
-    `INSERT INTO platos (nombre, tipo_plato, precio, stock_actual)
-     VALUES ($1, $2, $3, COALESCE($4, 0))
-     RETURNING 
-       id_plato, nombre, tipo_plato, precio, stock_actual, estado;`,
-    [nombre, tipo_plato, precio, stock_actual ?? 0]
-  );
+// ➕ Crear plato
+export const createPlato = async ({
+  nombre,
+  tipo_plato,
+  precio,
+  stock_actual = 0,
+  estado = true,
+  observaciones = null,
+  imagen_url = null,
+}) => {
+  const sql = `
+    INSERT INTO platos (
+      nombre,
+      tipo_plato,
+      precio,
+      stock_actual,
+      estado,
+      observaciones,
+      imagen_url
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING
+      id_plato,
+      nombre,
+      tipo_plato,
+      precio,
+      stock_actual,
+      estado,
+      observaciones,
+      imagen_url,
+      creado_en,
+      actualizado_en;
+  `;
+
+  const values = [
+    nombre,
+    tipo_plato,
+    precio,
+    stock_actual,
+    estado,
+    observaciones,
+    imagen_url,
+  ];
+
+  const { rows } = await pool.query(sql, values);
   return rows[0];
 };
 
-// ✏️ Actualizar un plato existente
-export const updatePlato = async (id, { nombre, tipo_plato, precio, stock_actual, estado }) => {
-  const { rows } = await query(
-    `UPDATE platos
-     SET
-       nombre = COALESCE($2, nombre),
-       tipo_plato = COALESCE($3, tipo_plato),
-       precio = COALESCE($4, precio),
-       stock_actual = COALESCE($5, stock_actual),
-       estado = COALESCE($6, estado)
-     WHERE id_plato = $1
-     RETURNING 
-       id_plato, nombre, tipo_plato, precio, stock_actual, estado;`,
-    [id, nombre, tipo_plato, precio, stock_actual, estado]
-  );
+// ✏️ Actualizar plato
+export const updatePlato = async (id_plato, datos) => {
+  const campos = [];
+  const valores = [];
+  let i = 1;
+
+  if (datos.nombre !== undefined) {
+    campos.push(`nombre = $${i++}`);
+    valores.push(datos.nombre);
+  }
+  if (datos.tipo_plato !== undefined) {
+    campos.push(`tipo_plato = $${i++}`);
+    valores.push(datos.tipo_plato);
+  }
+  if (datos.precio !== undefined) {
+    campos.push(`precio = $${i++}`);
+    valores.push(datos.precio);
+  }
+  if (datos.stock_actual !== undefined) {
+    campos.push(`stock_actual = $${i++}`);
+    valores.push(datos.stock_actual);
+  }
+  if (datos.estado !== undefined) {
+    campos.push(`estado = $${i++}`);
+    valores.push(datos.estado);
+  }
+  if (datos.observaciones !== undefined) {
+    campos.push(`observaciones = $${i++}`);
+    valores.push(datos.observaciones);
+  }
+  if (datos.imagen_url !== undefined) {
+    campos.push(`imagen_url = $${i++}`);
+    valores.push(datos.imagen_url);
+  }
+
+  if (campos.length === 0) {
+    return null; // Nada que actualizar
+  }
+
+  const sql = `
+    UPDATE platos
+    SET
+      ${campos.join(', ')},
+      actualizado_en = NOW()
+    WHERE id_plato = $${i}
+    RETURNING
+      id_plato,
+      nombre,
+      tipo_plato,
+      precio,
+      stock_actual,
+      estado,
+      observaciones,
+      imagen_url,
+      creado_en,
+      actualizado_en;
+  `;
+
+  valores.push(id_plato);
+
+  const { rows } = await pool.query(sql, valores);
   return rows[0] || null;
 };
 
-// ❌ Eliminar (desactivar) un plato
-export const deletePlato = async (id) => {
-  const { rows } = await query(
-    `UPDATE platos
-     SET estado = FALSE
-     WHERE id_plato = $1
-     RETURNING id_plato;`,
-    [id]
-  );
-  return rows[0] ? true : false;
+// ❌ Eliminar plato
+export const deletePlato = async (id_plato) => {
+  const sql = `
+    DELETE FROM platos
+    WHERE id_plato = $1
+    RETURNING id_plato;
+  `;
+  const { rows } = await pool.query(sql, [id_plato]);
+  return rows[0] || null;
 };
