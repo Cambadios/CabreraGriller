@@ -22,6 +22,7 @@ const AdminPlatos = () => {
     precio: '',
     categoria: '', // tipo_plato
     disponible: true, // estado
+    stock_actual: '', // 👈 NUEVO
   });
 
   const [imagenFile, setImagenFile] = useState(null);
@@ -80,6 +81,7 @@ const AdminPlatos = () => {
       precio: '',
       categoria: '',
       disponible: true,
+      stock_actual: '', // 👈 reset
     });
     setImagenFile(null);
     setImagenPreview(null);
@@ -96,7 +98,10 @@ const AdminPlatos = () => {
       fd.append('nombre', formData.nombre);
       fd.append('tipo_plato', formData.categoria);
       fd.append('precio', formData.precio || '0');
-      fd.append('stock_actual', '0');
+
+      // 👇 AHORA ENVIAMOS EL STOCK REAL DEL FORM
+      fd.append('stock_actual', formData.stock_actual || '0');
+
       fd.append('estado', formData.disponible ? 'true' : 'false');
       fd.append('observaciones', formData.descripcion || '');
 
@@ -130,6 +135,8 @@ const AdminPlatos = () => {
         typeof plato.estado === 'boolean'
           ? plato.estado
           : Boolean(plato.estado),
+      stock_actual:
+        plato.stock_actual != null ? String(plato.stock_actual) : '', // 👈 cargamos stock
     });
 
     setImagenFile(null);
@@ -226,6 +233,24 @@ const AdminPlatos = () => {
               className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring focus:ring-slate-300"
               min="0"
               step="0.1"
+              required
+            />
+          </div>
+
+          {/* 👇 NUEVO CAMPO: STOCK */}
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Stock actual
+            </label>
+            <input
+              type="number"
+              name="stock_actual"
+              value={formData.stock_actual}
+              onChange={handleChange}
+              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring focus:ring-slate-300"
+              min="0"
+              step="1"
+              placeholder="Ej. 20"
               required
             />
           </div>
@@ -379,6 +404,10 @@ const AdminPlatos = () => {
                           {plato.tipo_plato}
                         </p>
                       )}
+                      {/* 👇 Mostrar stock en la card */}
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        Stock: {plato.stock_actual ?? 0}
+                      </p>
                     </div>
                     <span className="text-sm font-bold text-slate-800">
                       Bs. {Number(plato.precio || 0).toFixed(2)}
