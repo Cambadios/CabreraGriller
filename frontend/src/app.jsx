@@ -18,6 +18,9 @@ import CajeroLayout from './pages/cajero/CajeroLayout';
 import CajeroInicio from './pages/cajero/CajeroInicio';
 import CajeroPedidos from './pages/cajero/CajeroPedidos';
 import CajeroClientes from './pages/cajero/CajeroClientes'; 
+import CajeroPedidosDelDia from './pages/cajero/CajeroPedidosDelDia';
+ './pages/cajero/CajeroClientes'; 
+
 // puedes agregar CajeroTickets luego si quieres
 
 const RutaProtegidaAdmin = ({ children }) => {
@@ -80,6 +83,8 @@ function App() {
           <Route index element={<CajeroInicio />} />
           <Route path="pedidos" element={<CajeroPedidos />} />
           <Route path="clientes" element={<CajeroClientes />} />
+          <Route path="pedidos-del-dia" element={<CajeroPedidosDelDia />} />
+
         </Route>
 
         {/* Rutas desconocidas */}

@@ -26,6 +26,8 @@ const CajeroLayout = () => {
     { label: '🏠 Resumen', key: 'resumen', path: '/cajero' },
     { label: '📋 Pedidos', key: 'pedidos', path: '/cajero/pedidos' },
     { label: '👥 Clientes', key: 'clientes', path: '/cajero/clientes' },
+    { label: '🧾 Pedidos del día', key: 'pedidos-del-dia', path: '/cajero/pedidos-del-dia' },
+
     // 👉 Si después defines tickets para cajero:
     // { label: '💵 Tickets', key: 'tickets', path: '/cajero/tickets' },
   ];

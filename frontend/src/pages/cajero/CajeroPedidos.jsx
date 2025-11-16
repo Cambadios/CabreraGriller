@@ -1,11 +1,21 @@
+// src/pages/cajero/CajeroPedidos.jsx
 import { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { obtenerClientes } from '../../services/clienteService';
 import { getPlatos } from '../../services/platoService';
-import { createPedido } from '../../services/pedidoService';
+import {
+  createPedido,
+  actualizarPedido,
+} from '../../services/pedidoService';
 
 const CajeroPedidos = () => {
   const { token, usuario } = useAuth();
+  const [searchParams] = useSearchParams();
+
+  // Si viene ?pedido=123 → estamos continuando un pedido pendiente
+  const pedidoExistenteId = searchParams.get('pedido');
+  const esContinuacion = !!pedidoExistenteId;
 
   const [clientes, setClientes] = useState([]);
   const [platos, setPlatos] = useState([]);
@@ -16,7 +26,7 @@ const CajeroPedidos = () => {
   // Tipo de servicio
   const [tipoServicio, setTipoServicio] = useState('MESA'); // MESA | PARA_LLEVAR | RECOJO | DOMICILIO
 
-  // Carrito
+  // Carrito (en modo continuación: SOLO NUEVOS platos que se suman al pedido existente)
   const [items, setItems] = useState([]);
 
   // UI filtros catálogo
@@ -28,10 +38,17 @@ const CajeroPedidos = () => {
   const [mensajeOk, setMensajeOk] = useState('');
   const [enviando, setEnviando] = useState(false);
 
-  // 🔹 Modal de pago / ticket
+  // Modal de pago / ticket
   const [pagoModalAbierto, setPagoModalAbierto] = useState(false);
-  const [metodoPagoModal, setMetodoPagoModal] = useState('EFECTIVO'); // EFECTIVO | QR
+  const [metodoPagoModal, setMetodoPagoModal] = useState('EFECTIVO'); // EFECTIVO | QR | PENDIENTE
   const [montoRecibido, setMontoRecibido] = useState('');
+
+  // Cuando es continuación, forzamos pago "PENDIENTE" (no se cobra, solo se agregan platos)
+  useEffect(() => {
+    if (esContinuacion) {
+      setMetodoPagoModal('PENDIENTE');
+    }
+  }, [esContinuacion]);
 
   // Cargar clientes y platos
   useEffect(() => {
@@ -154,7 +171,6 @@ const CajeroPedidos = () => {
       return;
     }
 
-    // control de stock también aquí
     const plato = platos.find((p) => p.id_plato === id_plato);
     const stock = plato?.stock_actual ?? Infinity;
     if (cant > stock) {
@@ -190,87 +206,129 @@ const CajeroPedidos = () => {
     setPagoModalAbierto(true);
   };
 
-  // Paso 2: confirmar pago + crear pedido
+  // Paso 2: confirmar pago + crear o actualizar pedido
   const handleConfirmarPagoYCrearPedido = async () => {
-    if (metodoPagoModal === 'EFECTIVO') {
-      const recibido = Number(montoRecibido || 0);
-      if (recibido <= 0) {
-        setError('Debes indicar el monto recibido en efectivo');
-        return;
+    // 🔹 MODO NUEVO PEDIDO (no viene ?pedido=)
+    if (!esContinuacion) {
+      if (metodoPagoModal === 'EFECTIVO') {
+        const recibido = Number(montoRecibido || 0);
+        if (recibido <= 0) {
+          setError('Debes indicar el monto recibido en efectivo');
+          return;
+        }
+        if (recibido < total) {
+          setError('El monto recibido es menor al total a pagar');
+          return;
+        }
       }
-      if (recibido < total) {
-        setError('El monto recibido es menor al total a pagar');
-        return;
+
+      try {
+        setError('');
+        setMensajeOk('');
+        setEnviando(true);
+
+        const infoServicioTexto = (() => {
+          switch (tipoServicio) {
+            case 'MESA':
+              return 'SERVICIO: En mesa';
+            case 'PARA_LLEVAR':
+              return 'SERVICIO: Para llevar (mostrador)';
+            case 'RECOJO':
+              return 'SERVICIO: Pedido para recoger';
+            case 'DOMICILIO':
+              return 'SERVICIO: Envío a domicilio';
+            default:
+              return 'SERVICIO: No especificado';
+          }
+        })();
+
+        const infoPagoTexto =
+          metodoPagoModal === 'EFECTIVO'
+            ? `PAGO: Efectivo (recibido Bs. ${Number(
+                montoRecibido || 0
+              ).toFixed(2)}, cambio Bs. ${cambio.toFixed(2)})`
+            : metodoPagoModal === 'QR'
+            ? 'PAGO: QR'
+            : 'PAGO: PENDIENTE (NO PAGADO)';
+
+        const observacionesFinal = [
+          infoServicioTexto,
+          infoPagoTexto,
+          observaciones,
+        ]
+          .filter(Boolean)
+          .join(' | ');
+
+        const tipo_entrega = tipoServicio === 'MESA' ? 'MESA' : 'LLEVAR';
+        const tipo_pago = metodoPagoModal; // EFECTIVO | QR | PENDIENTE
+
+        const detalles = items.map((it) => ({
+          id_plato: it.id_plato,
+          cantidad: it.cantidad,
+        }));
+
+        const payload = {
+          id_usuario: usuario.id_usuario,
+          tipo_entrega,
+          tipo_pago,
+          detalles,
+          observaciones: observacionesFinal || null,
+        };
+
+        if (clienteSeleccionado) {
+          payload.id_cliente = Number(clienteSeleccionado);
+        }
+
+        await createPedido(token, payload);
+
+        setMensajeOk('✅ Pedido creado correctamente');
+        setItems([]);
+        setObservaciones('');
+        setClienteSeleccionado('');
+        setMetodoPagoModal('EFECTIVO');
+        setMontoRecibido('');
+        setPagoModalAbierto(false);
+      } catch (err) {
+        console.error(err);
+        setError(err.message || 'Error al crear el pedido');
+      } finally {
+        setEnviando(false);
       }
+
+      return;
     }
 
-    try {
-      setError('');
-      setMensajeOk('');
-      setEnviando(true);
-
-      // Info de servicio para observaciones
-      const infoServicioTexto = (() => {
-        switch (tipoServicio) {
-          case 'MESA':
-            return 'SERVICIO: En mesa';
-          case 'PARA_LLEVAR':
-            return 'SERVICIO: Para llevar (mostrador)';
-          case 'RECOJO':
-            return 'SERVICIO: Pedido para recoger';
-          case 'DOMICILIO':
-            return 'SERVICIO: Envío a domicilio';
-          default:
-            return 'SERVICIO: No especificado';
-        }
-      })();
-
-      const infoPagoTexto =
-        metodoPagoModal === 'EFECTIVO'
-          ? `PAGO: Efectivo (recibido Bs. ${Number(
-              montoRecibido || 0
-            ).toFixed(2)}, cambio Bs. ${cambio.toFixed(2)})`
-          : 'PAGO: QR';
-
-      const observacionesFinal = [infoServicioTexto, infoPagoTexto, observaciones]
-        .filter(Boolean)
-        .join(' | ');
-
-      // Backend: tipo_entrega: 'MESA' o 'LLEVAR'
-      const tipo_entrega = tipoServicio === 'MESA' ? 'MESA' : 'LLEVAR';
-      const tipo_pago = metodoPagoModal; // 'EFECTIVO' o 'QR'
-
-      const detalles = items.map((it) => ({
-        id_plato: it.id_plato,
-        cantidad: it.cantidad,
-      }));
-
-      const payload = {
-        id_usuario: usuario.id_usuario,
-        tipo_entrega,
-        tipo_pago,
-        detalles,
-        observaciones: observacionesFinal || null,
-      };
-
-      if (clienteSeleccionado) {
-        payload.id_cliente = Number(clienteSeleccionado);
+    // 🔹 MODO CONTINUAR PEDIDO PENDIENTE (sí viene ?pedido=)
+    if (esContinuacion) {
+      if (items.length === 0) {
+        setError('Debes agregar al menos un plato para actualizar el pedido');
+        return;
       }
 
-      await createPedido(token, payload);
+      try {
+        setError('');
+        setMensajeOk('');
+        setEnviando(true);
 
-      setMensajeOk('✅ Pedido creado correctamente');
-      setItems([]);
-      setObservaciones('');
-      setClienteSeleccionado('');
-      setMetodoPagoModal('EFECTIVO');
-      setMontoRecibido('');
-      setPagoModalAbierto(false);
-    } catch (err) {
-      console.error(err);
-      setError(err.message || 'Error al crear el pedido');
-    } finally {
-      setEnviando(false);
+        const detalles = items.map((it) => ({
+          id_plato: it.id_plato,
+          cantidad: it.cantidad,
+        }));
+
+        await actualizarPedido(token, Number(pedidoExistenteId), detalles);
+
+        setMensajeOk(
+          `✅ Pedido #${pedidoExistenteId} actualizado correctamente (se sumaron los nuevos platos)`
+        );
+        setItems([]);
+        setPagoModalAbierto(false);
+        setMontoRecibido('');
+      } catch (err) {
+        console.error(err);
+        setError(err.message || 'Error al actualizar el pedido');
+      } finally {
+        setEnviando(false);
+      }
     }
   };
 
@@ -294,6 +352,12 @@ const CajeroPedidos = () => {
             Haz clic sobre los platos para agregarlos al pedido, selecciona el tipo
             de servicio y (opcional) un cliente. El pago se define al confirmar.
           </p>
+          {esContinuacion && (
+            <p className="mt-1 text-xs font-semibold text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1 inline-block">
+              Continuando pedido pendiente #{pedidoExistenteId}: solo se
+              sumarán estos platos al mismo pedido. No se crea un pedido nuevo.
+            </p>
+          )}
         </div>
         <div className="mt-2 md:mt-0">
           <div className="inline-flex items-baseline gap-2 rounded-xl border border-emerald-500 bg-emerald-50 px-4 py-2">
@@ -393,6 +457,7 @@ const CajeroPedidos = () => {
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 value={clienteSeleccionado}
                 onChange={(e) => setClienteSeleccionado(e.target.value)}
+                disabled={esContinuacion} // el pedido ya tiene cliente
               >
                 <option value="">Sin cliente (anónimo)</option>
                 {clientes.map((c) => (
@@ -402,6 +467,12 @@ const CajeroPedidos = () => {
                   </option>
                 ))}
               </select>
+              {esContinuacion && (
+                <p className="text-[10px] text-slate-500 mt-1">
+                  El cliente del pedido no se modifica al continuar, solo se
+                  agregan platos.
+                </p>
+              )}
             </div>
 
             <div>
@@ -508,10 +579,16 @@ const CajeroPedidos = () => {
                 onClick={handleAbrirModalPago}
                 className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
               >
-                {enviando ? 'Procesando...' : 'Confirmar pedido'}
+                {enviando
+                  ? esContinuacion
+                    ? 'Actualizando pedido...'
+                    : 'Procesando...'
+                  : esContinuacion
+                  ? 'Agregar al pedido pendiente'
+                  : 'Confirmar pedido'}
               </button>
               <p className="mt-1 text-[11px] text-slate-500 text-center">
-                Primero revisa el pago y el ticket antes de registrar.
+                Primero revisa el resumen antes de registrar.
               </p>
             </div>
           </div>
@@ -615,15 +692,21 @@ const CajeroPedidos = () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-lg max-w-xl w-full p-4 md:p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Pago y ticket</h2>
+              <h2 className="text-lg font-semibold">
+                {esContinuacion
+                  ? `Agregar al pedido #${pedidoExistenteId}`
+                  : 'Pago y ticket'}
+              </h2>
               <button
                 className="text-sm text-slate-500 hover:text-slate-700"
                 type="button"
                 onClick={() => {
                   if (!enviando) {
                     setPagoModalAbierto(false);
-                    setMontoRecibido('');
-                    setMetodoPagoModal('EFECTIVO');
+                    if (!esContinuacion) {
+                      setMontoRecibido('');
+                      setMetodoPagoModal('EFECTIVO');
+                    }
                   }
                 }}
               >
@@ -634,61 +717,89 @@ const CajeroPedidos = () => {
             {/* Sección de pago */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-2">
-                <p className="text-sm font-medium">Total a pagar</p>
+                <p className="text-sm font-medium">
+                  {esContinuacion ? 'Nuevo subtotal a agregar' : 'Total a pagar'}
+                </p>
                 <p className="text-xl font-bold text-emerald-700">
                   Bs. {total.toFixed(2)}
                 </p>
 
-                <div className="mt-2">
-                  <p className="text-xs font-medium mb-1">Método de pago</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setMetodoPagoModal('EFECTIVO')}
-                      className={
-                        'px-2 py-2 rounded-lg border text-center ' +
-                        (metodoPagoModal === 'EFECTIVO'
-                          ? 'bg-emerald-600 text-white border-emerald-600'
-                          : 'bg-slate-50 text-slate-700 border-slate-200')
-                      }
-                    >
-                      Efectivo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMetodoPagoModal('QR')}
-                      className={
-                        'px-2 py-2 rounded-lg border text-center ' +
-                        (metodoPagoModal === 'QR'
-                          ? 'bg-emerald-600 text-white border-emerald-600'
-                          : 'bg-slate-50 text-slate-700 border-slate-200')
-                      }
-                    >
-                      QR
-                    </button>
-                  </div>
-                </div>
+                {!esContinuacion && (
+                  <>
+                    <div className="mt-2">
+                      <p className="text-xs font-medium mb-1">
+                        Método de pago
+                      </p>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setMetodoPagoModal('EFECTIVO')}
+                          className={
+                            'px-2 py-2 rounded-lg border text-center ' +
+                            (metodoPagoModal === 'EFECTIVO'
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'bg-slate-50 text-slate-700 border-slate-200')
+                          }
+                        >
+                          Efectivo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMetodoPagoModal('QR')}
+                          className={
+                            'px-2 py-2 rounded-lg border text-center ' +
+                            (metodoPagoModal === 'QR'
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'bg-slate-50 text-slate-700 border-slate-200')
+                          }
+                        >
+                          QR
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMetodoPagoModal('PENDIENTE')}
+                          className={
+                            'px-2 py-2 rounded-lg border text-center ' +
+                            (metodoPagoModal === 'PENDIENTE'
+                              ? 'bg-yellow-500 text-white border-yellow-500'
+                              : 'bg-slate-50 text-slate-700 border-slate-200')
+                          }
+                        >
+                          Pendiente
+                        </button>
+                      </div>
+                    </div>
 
-                {metodoPagoModal === 'EFECTIVO' && (
-                  <div className="mt-2 space-y-1">
-                    <label className="block text-xs font-medium">
-                      Monto recibido (Bs.)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={montoRecibido}
-                      onChange={(e) => setMontoRecibido(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                    />
-                    <p className="text-xs text-slate-600">
-                      Cambio: {''}
-                      <span className="font-semibold">
-                        Bs. {cambio.toFixed(2)}
-                      </span>
-                    </p>
-                  </div>
+                    {metodoPagoModal === 'EFECTIVO' && (
+                      <div className="mt-2 space-y-1">
+                        <label className="block text-xs font-medium">
+                          Monto recibido (Bs.)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={montoRecibido}
+                          onChange={(e) => setMontoRecibido(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        />
+                        <p className="text-xs text-slate-600">
+                          Cambio:{' '}
+                          <span className="font-semibold">
+                            Bs. {cambio.toFixed(2)}
+                          </span>
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {esContinuacion && (
+                  <p className="mt-2 text-[11px] text-slate-600">
+                    Este pedido seguirá marcado como{' '}
+                    <span className="font-semibold">PENDIENTE</span>. Solo se
+                    sumará el monto de estos platos al total existente.
+                  </p>
                 )}
               </div>
 
@@ -698,18 +809,17 @@ const CajeroPedidos = () => {
                   <p className="font-bold text-sm">CabreraGriller</p>
                   <p>{new Date().toLocaleString()}</p>
                 </div>
-                <p>
-                  Cajero:{' '}
-                  <span className="font-semibold">
-                    {usuario?.nombre_completo || '—'}
-                  </span>
-                </p>
-                <p>
-                  Cliente:{' '}
-                  <span className="font-semibold">
-                    {clienteObj?.nombre_completo || 'Anónimo'}
-                  </span>
-                </p>
+
+                {/* Cliente solo si NO es anónimo */}
+                {clienteObj && !esContinuacion && (
+                  <p>
+                    Cliente:{' '}
+                    <span className="font-semibold">
+                      {clienteObj.nombre_completo}
+                    </span>
+                  </p>
+                )}
+
                 <p>
                   Servicio:{' '}
                   <span className="font-semibold">
@@ -725,29 +835,43 @@ const CajeroPedidos = () => {
                 <p>
                   Pago:{' '}
                   <span className="font-semibold">
-                    {metodoPagoModal === 'EFECTIVO'
+                    {esContinuacion
+                      ? 'PENDIENTE / NO PAGADO'
+                      : metodoPagoModal === 'EFECTIVO'
                       ? 'Efectivo'
-                      : 'QR'}
+                      : metodoPagoModal === 'QR'
+                      ? 'QR'
+                      : 'PENDIENTE / NO PAGADO'}
                   </span>
                 </p>
-                {metodoPagoModal === 'EFECTIVO' && (
-                  <>
-                    <p>
-                      Recibido:{' '}
-                      <span className="font-semibold">
-                        Bs. {Number(montoRecibido || 0).toFixed(2)}
-                      </span>
-                    </p>
-                    <p>
-                      Cambio:{' '}
-                      <span className="font-semibold">
-                        Bs. {cambio.toFixed(2)}
-                      </span>
-                    </p>
-                  </>
-                )}
+
+                {/* Efectivo: mostramos Recibido/Cambio solo si monto > 0 y no es continuación */}
+                {!esContinuacion &&
+                  metodoPagoModal === 'EFECTIVO' &&
+                  Number(montoRecibido || 0) > 0 && (
+                    <>
+                      <p>
+                        Recibido:{' '}
+                        <span className="font-semibold">
+                          Bs. {Number(montoRecibido).toFixed(2)}
+                        </span>
+                      </p>
+
+                      {cambio > 0 && (
+                        <p>
+                          Cambio:{' '}
+                          <span className="font-semibold">
+                            Bs. {cambio.toFixed(2)}
+                          </span>
+                        </p>
+                      )}
+                    </>
+                  )}
+
                 <hr className="my-2 border-slate-300" />
-                <p className="font-semibold mb-1">Detalle:</p>
+                <p className="font-semibold mb-1">
+                  {esContinuacion ? 'Nuevos platos:' : 'Detalle:'}
+                </p>
                 {items.map((it) => (
                   <p key={it.id_plato}>
                     {it.cantidad} x {it.nombre} @ Bs.{' '}
@@ -757,11 +881,18 @@ const CajeroPedidos = () => {
                 ))}
                 <hr className="my-2 border-slate-300" />
                 <p>
-                  TOTAL:{' '}
+                  {esContinuacion ? 'SUBTOTAL A AGREGAR:' : 'TOTAL:'}{' '}
                   <span className="font-bold">
                     Bs. {total.toFixed(2)}
                   </span>
                 </p>
+
+                {(!esContinuacion && metodoPagoModal === 'PENDIENTE') && (
+                  <p className="mt-1 text-red-600 font-bold text-center">
+                    *** PENDIENTE DE PAGO ***
+                  </p>
+                )}
+
                 {observaciones && (
                   <>
                     <hr className="my-2 border-slate-300" />
@@ -782,8 +913,10 @@ const CajeroPedidos = () => {
                 onClick={() => {
                   if (!enviando) {
                     setPagoModalAbierto(false);
-                    setMontoRecibido('');
-                    setMetodoPagoModal('EFECTIVO');
+                    if (!esContinuacion) {
+                      setMontoRecibido('');
+                      setMetodoPagoModal('EFECTIVO');
+                    }
                   }
                 }}
                 className="px-4 py-2 text-xs md:text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-60"
@@ -797,7 +930,11 @@ const CajeroPedidos = () => {
                 className="px-4 py-2 text-xs md:text-sm rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60"
               >
                 {enviando
-                  ? 'Registrando...'
+                  ? esContinuacion
+                    ? 'Actualizando...'
+                    : 'Registrando...'
+                  : esContinuacion
+                  ? 'Confirmar y agregar al pedido'
                   : 'Confirmar y registrar pedido'}
               </button>
             </div>
