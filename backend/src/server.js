@@ -19,6 +19,7 @@ import usuarioRoutes from './routes/usuarioRoutes.js';
 import reporteRoutes from './routes/reporteRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import { verificarToken } from './middlewares/authMiddleware.js';
+import compraRoutes from './routes/compraRoutes.js';
 
 import { errorHandler } from './middlewares/errorHandler.js';
 
@@ -69,6 +70,7 @@ app.use('/api/pedidos', verificarToken, pedidoRoutes);
 app.use('/api/tickets', verificarToken, ticketRoutes);
 app.use('/api/usuarios', verificarToken, usuarioRoutes);
 app.use('/api/reportes', verificarToken, reporteRoutes);
+app.use('/api/compras', compraRoutes);
 
 // 404 básico
 app.use((req, res) => {

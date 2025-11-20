@@ -27,7 +27,7 @@ const AdminLayout = () => {
     { label: '🍽️ Platos', key: 'platos', path: '/admin/platos' },
     { label: '👥 Clientes', key: 'clientes', path: '/admin/clientes' },
     { label: '👤 Usuarios', key: 'usuarios', path: '/admin/usuarios' },
-    { label: '💵 Tickets', key: 'tickets', path: '/admin/tickets' },
+    { label: '💵 Compras', key: 'compras', path: '/admin/compras' },
     { label: '📊 Reportes', key: 'reportes', path: '/admin/reportes' },
   ];
 

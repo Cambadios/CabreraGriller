@@ -10,7 +10,7 @@ import AdminPedidos from './pages/admin/AdminPedidos';
 import AdminPlatos from './pages/admin/AdminPlatos';
 import AdminClientes from './pages/admin/AdminClientes';
 import AdminUsuarios from './pages/admin/AdminUsuarios';
-import AdminTickets from './pages/admin/AdminTickets';
+import AdminCompras from './pages/admin/AdminCompras';
 import AdminReportes from './pages/admin/AdminReportes';
 
 // CAJERO
@@ -19,6 +19,7 @@ import CajeroInicio from './pages/cajero/CajeroInicio';
 import CajeroPedidos from './pages/cajero/CajeroPedidos';
 import CajeroClientes from './pages/cajero/CajeroClientes'; 
 import CajeroPedidosDelDia from './pages/cajero/CajeroPedidosDelDia';
+
  './pages/cajero/CajeroClientes'; 
 
 // puedes agregar CajeroTickets luego si quieres
@@ -67,7 +68,7 @@ function App() {
           <Route path="platos" element={<AdminPlatos />} />
           <Route path="clientes" element={<AdminClientes />} />
           <Route path="usuarios" element={<AdminUsuarios />} />
-          <Route path="tickets" element={<AdminTickets />} />
+          <Route path="compras" element={<AdminCompras />} />
           <Route path="reportes" element={<AdminReportes />} />
         </Route>
 
