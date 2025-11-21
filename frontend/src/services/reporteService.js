@@ -5,9 +5,9 @@ const getAuthHeaders = (token) => ({
   Authorization: `Bearer ${token}`,
 });
 
-// Este lo usa CajeroInicio
+// 🔹 Este lo usa CajeroInicio (resumen del día del cajero)
 export const getResumenCajeroHoy = async (token) => {
-  // Usamos tu endpoint existente: GET /api/reportes/dia
+  // Usamos tu endpoint existente: GET /api/reportes/dia (sin fecha → hoy)
   const res = await fetch(`${API_URL}/api/reportes/dia`, {
     headers: getAuthHeaders(token),
   });
@@ -21,7 +21,6 @@ export const getResumenCajeroHoy = async (token) => {
   // data = { fecha, resumen, platos }
   const resumen = data.resumen || {};
 
-  // Ajusta los nombres según lo que devuelva getResumenDia(fecha)
   return {
     total_dia: Number(resumen.total_dia ?? 0),
     total_tickets: Number(
@@ -29,9 +28,26 @@ export const getResumenCajeroHoy = async (token) => {
     ),
     total_efectivo: Number(resumen.total_efectivo ?? 0),
     total_qr: Number(resumen.total_qr ?? 0),
-
-    // Por ahora no tienes "últimos pedidos" en este endpoint,
-    // así que lo dejamos vacío. Más adelante lo podemos llenar.
     ultimos_pedidos: data.ultimos_pedidos ?? [],
   };
+};
+
+// 🔹 Resumen por fecha para el ADMIN
+// Usa EL MISMO endpoint pero con query ?fecha=YYYY-MM-DD
+export const getResumenDia = async (token, fecha) => {
+  const res = await fetch(
+    `${API_URL}/api/reportes/dia?fecha=${fecha}`,
+    {
+      headers: getAuthHeaders(token),
+    }
+  );
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.mensaje || 'Error al obtener resumen del día');
+  }
+
+  // data = { fecha, resumen, platos }
+  return data;
 };
