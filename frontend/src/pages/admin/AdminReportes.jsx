@@ -2,244 +2,494 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getResumenDia } from '../../services/reporteService';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  BarChart,
+  Bar,
+} from 'recharts';
 
-const formatearMoneda = (valor) => {
-  if (valor == null) return 'Bs 0.00';
-  const num = Number(valor) || 0;
-  return new Intl.NumberFormat('es-BO', {
-    style: 'currency',
-    currency: 'BOB',
-    minimumFractionDigits: 2,
-  }).format(num);
+const formatearFechaBonita = (isoDate) => {
+  const d = new Date(isoDate);
+  return d.toLocaleDateString('es-BO', {
+    day: '2-digit',
+    month: '2-digit',
+  });
 };
+
+const generarFechasRango = (tipo, fechaBaseStr) => {
+  const base = new Date(fechaBaseStr);
+  const fechas = [];
+
+  if (tipo === 'dia') return [fechaBaseStr];
+
+  if (tipo === 'semana') {
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(base);
+      d.setDate(base.getDate() - i);
+      fechas.push(d.toISOString().substring(0, 10));
+    }
+    return fechas;
+  }
+
+  if (tipo === 'mes') {
+    const year = base.getFullYear();
+    const month = base.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    let current = firstDay;
+
+    while (current <= lastDay) {
+      fechas.push(current.toISOString().substring(0, 10));
+      const next = new Date(current);
+      next.setDate(current.getDate() + 1);
+      current = next;
+    }
+    return fechas;
+  }
+
+  return [fechaBaseStr];
+};
+
+const COLORS_PAYMENTS = ['#22C55E', '#6366F1']; // efectivo, qr
+const COLORS_BARS = ['#0EA5E9', '#6366F1', '#22C55E', '#F97316', '#EC4899'];
 
 const AdminReportes = () => {
   const { token } = useAuth();
+  const hoy = new Date().toISOString().substring(0, 10);
 
-  const [fecha, setFecha] = useState(() => {
-    const hoy = new Date();
-    return hoy.toISOString().substring(0, 10);
-  });
-
-  const [resumen, setResumen] = useState(null);
-  const [platos, setPlatos] = useState([]);
+  const [tipoRango, setTipoRango] = useState('dia');
+  const [fechaBase, setFechaBase] = useState(hoy);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const cargarDatos = async (f) => {
-    try {
-      setLoading(true);
-      setError('');
-      const data = await getResumenDia(token, f);
-
-      console.log('🔍 Datos recibidos del backend:', data);
-
-      setResumen(data.resumen || {});
-      setPlatos(data.platos || []);
-    } catch (err) {
-      console.error('Error al cargar reportes:', err);
-      setError(err.message || 'Error al cargar reportes');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // [{ fecha, resumen, platos }]
+  const [datosDiarios, setDatosDiarios] = useState([]);
 
   useEffect(() => {
-    if (token) cargarDatos(fecha);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+    const cargarDatos = async () => {
+      if (!token || !fechaBase) return;
 
-  const maxCantidadVendida = useMemo(() => {
-    if (!platos.length) return 0;
-    return platos.reduce(
-      (max, p) => Math.max(max, Number(p.cantidad_vendida || 0)),
-      0
-    );
-  }, [platos]);
+      try {
+        setLoading(true);
+        setError('');
+        setDatosDiarios([]);
 
-  // Como en el resumen no viene total de platos, lo calculamos desde la lista
-  const totalPlatosVendidos = useMemo(() => {
-    if (!platos.length) return 0;
-    return platos.reduce(
-      (sum, p) => sum + Number(p.cantidad_vendida || 0),
-      0
-    );
-  }, [platos]);
+        const fechas = generarFechasRango(tipoRango, fechaBase);
+        const resultados = [];
 
-  const handleBuscar = (e) => {
-    e.preventDefault();
-    cargarDatos(fecha);
-  };
+        for (const f of fechas) {
+          try {
+            const data = await getResumenDia(token, f);
+            resultados.push({
+              fecha: f,
+              resumen: data.resumen || {},
+              platos: data.platos || [],
+            });
+          } catch (e) {
+            console.warn(`No se pudo obtener resumen para ${f}`, e);
+          }
+        }
+
+        setDatosDiarios(resultados);
+      } catch (err) {
+        console.error(err);
+        setError(err.message || 'Error al cargar los reportes');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarDatos();
+  }, [token, tipoRango, fechaBase]);
+
+  // ✅ Totales del rango
+  const totalVentas = datosDiarios.reduce(
+    (acc, d) => acc + Number(d.resumen.total_general || 0),
+    0
+  );
+  const totalPedidos = datosDiarios.reduce(
+    (acc, d) => acc + Number(d.resumen.total_pedidos || 0),
+    0
+  );
+  const totalEfectivo = datosDiarios.reduce(
+    (acc, d) => acc + Number(d.resumen.total_efectivo || 0),
+    0
+  );
+  const totalQr = datosDiarios.reduce(
+    (acc, d) => acc + Number(d.resumen.total_qr || 0),
+    0
+  );
+
+  // ✅ Datos para líneas / barras de pagos por fecha
+  const pagosPorDia = datosDiarios.map((d) => ({
+    fecha: formatearFechaBonita(d.fecha),
+    efectivo: Number(d.resumen.total_efectivo || 0),
+    qr: Number(d.resumen.total_qr || 0),
+    total: Number(d.resumen.total_general || 0),
+  }));
+
+  // ✅ Pie total del rango
+  const dataPiePagos = [
+    { name: 'Efectivo', value: totalEfectivo },
+    { name: 'QR', value: totalQr },
+  ].filter((x) => x.value > 0);
+
+  // ✅ Top platos del rango (agregando ventas/cantidades de todos los días)
+  const topPlatosRango = useMemo(() => {
+    const map = new Map();
+
+    datosDiarios.forEach((dia) => {
+      (dia.platos || []).forEach((p) => {
+        const nombre = p.nombre;
+        const cant = Number(p.cantidad_vendida ?? p.cantidad ?? 0);
+
+        if (!map.has(nombre)) {
+          map.set(nombre, 0);
+        }
+        map.set(nombre, map.get(nombre) + cant);
+      });
+    });
+
+    const arr = Array.from(map.entries()).map(([nombre, cantidad]) => ({
+      nombre,
+      cantidad,
+    }));
+
+    arr.sort((a, b) => b.cantidad - a.cantidad);
+
+    return arr.slice(0, 5);
+  }, [datosDiarios]);
+
+  const platoMasVendido = topPlatosRango[0];
+
+  // Texto rango
+  const descripcionRango = (() => {
+    if (tipoRango === 'dia') {
+      return `Resumen del día ${formatearFechaBonita(fechaBase)}`;
+    }
+    if (tipoRango === 'semana') {
+      const fechas = generarFechasRango(tipoRango, fechaBase);
+      if (fechas.length === 0) return '';
+      return `Semana: del ${formatearFechaBonita(
+        fechas[0]
+      )} al ${formatearFechaBonita(fechas[fechas.length - 1])}`;
+    }
+    if (tipoRango === 'mes') {
+      const base = new Date(fechaBase);
+      return `Mes completo: ${base.toLocaleDateString('es-BO', {
+        month: 'long',
+        year: 'numeric',
+      })}`;
+    }
+    return '';
+  })();
 
   return (
-    <div className="bg-white rounded-xl shadow p-4 md:p-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-        <div>
-          <h2 className="text-lg md:text-xl font-bold">Reportes</h2>
-          <p className="text-sm text-slate-600">
-            Resumen de ventas y platos más vendidos por día.
+    <>
+      <h2 className="text-xl md:text-2xl font-bold mb-2">Reportes</h2>
+      <p className="text-xs md:text-sm text-slate-600 mb-4">
+        Filtra por día, semana o mes para analizar ventas, pedidos, pagos y platos.
+      </p>
+
+      {/* Filtros */}
+      <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-col md:flex-row gap-3 md:items-end">
+        <div className="flex-1">
+          <label className="block text-xs md:text-sm text-slate-600 mb-1">
+            Tipo de rango
+          </label>
+          <select
+            value={tipoRango}
+            onChange={(e) => setTipoRango(e.target.value)}
+            className="border rounded-lg px-2 py-1 text-xs md:text-sm w-full"
+          >
+            <option value="dia">Día</option>
+            <option value="semana">Semana (últimos 7 días desde la fecha)</option>
+            <option value="mes">Mes completo</option>
+          </select>
+        </div>
+
+        <div className="flex-1">
+          <label className="block text-xs md:text-sm text-slate-600 mb-1">
+            Fecha base
+          </label>
+          <input
+            type="date"
+            value={fechaBase}
+            onChange={(e) => setFechaBase(e.target.value)}
+            className="border rounded-lg px-2 py-1 text-xs md:text-sm w-full"
+          />
+          <p className="text-[10px] md:text-[11px] text-slate-400 mt-1">
+            Para "día": se usa esta fecha. Para "semana" y "mes": se toma como referencia.
           </p>
         </div>
 
-        <form
-          onSubmit={handleBuscar}
-          className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
-        >
-          <label className="text-sm text-slate-700 flex flex-col">
-            <span className="mb-1 font-medium">Seleccionar fecha:</span>
-            <input
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              className="border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-purple-200"
-            />
-          </label>
-          <button
-            type="submit"
-            className="bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-          >
-            Ver reporte
-          </button>
-        </form>
+        <div className="md:w-48 text-xs md:text-sm text-slate-500">
+          {descripcionRango && (
+            <div className="bg-slate-50 rounded-lg px-2 py-2 border border-slate-200">
+              {descripcionRango}
+            </div>
+          )}
+        </div>
       </div>
 
-      {loading && (
-        <div className="text-center py-6 text-slate-600 text-sm">
-          Cargando reportes...
-        </div>
-      )}
-
-      {error && !loading && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+      {error && (
+        <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs md:text-sm text-red-700">
           {error}
         </div>
       )}
 
-      {!loading && !error && resumen && (
+      {loading ? (
+        <div className="bg-white rounded-xl shadow p-4">
+          <p className="text-xs md:text-sm text-slate-600">Cargando reportes...</p>
+        </div>
+      ) : (
         <>
-          {/* ================================
-               🔸 RESUMEN NUMÉRICO
-             ================================ */}
-          <section className="mb-6">
-            <h3 className="text-base md:text-lg font-semibold mb-3">
-              Resumen del día
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-
-              {/* Total pedidos */}
-              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
-                <p className="text-xs text-slate-500">Total pedidos</p>
-                <p className="text-xl font-bold">
-                  {resumen.total_pedidos ?? 0}
-                </p>
-              </div>
-
-              {/* Total platos vendidos (calculado desde la lista) */}
-              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
-                <p className="text-xs text-slate-500">Total platos vendidos</p>
-                <p className="text-xl font-bold">
-                  {totalPlatosVendidos}
-                </p>
-              </div>
-
-              {/* INGRESOS TOTALES = total_general */}
-              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
-                <p className="text-xs text-slate-500">Ingresos totales</p>
-                <p className="text-xl font-bold">
-                  {formatearMoneda(resumen.total_general)}
-                </p>
-              </div>
-
-              {/* EFECTIVO = total_efectivo */}
-              <div className="rounded-xl border border-green-100 bg-green-50 px-3 py-3">
-                <p className="text-xs text-slate-500">Ingresos en efectivo</p>
-                <p className="text-xl font-bold">
-                  {formatearMoneda(resumen.total_efectivo)}
-                </p>
-              </div>
-
-              {/* QR = total_qr */}
-              <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-3">
-                <p className="text-xs text-slate-500">Ingresos por QR</p>
-                <p className="text-xl font-bold">
-                  {formatearMoneda(resumen.total_qr)}
-                </p>
-              </div>
-
-              {/* Pendiente → por ahora 0 (no lo calculas en el backend) */}
-              <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3">
-                <p className="text-xs text-slate-500">Pendiente de pago</p>
-                <p className="text-xl font-bold">
-                  {formatearMoneda(0)}
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* ================================
-               🔸 TABLA: PLATOS MÁS VENDIDOS
-             ================================ */}
-          <section>
-            <h3 className="text-base md:text-lg font-semibold mb-3">
-              Platos más vendidos
-            </h3>
-
-            {platos.length === 0 && (
-              <p className="text-sm text-slate-500">
-                No hay platos vendidos para esta fecha.
+          {/* Totales del rango */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div className="bg-white rounded-xl shadow p-4">
+              <p className="text-xs md:text-sm text-slate-500">
+                Ventas en el rango
               </p>
-            )}
+              <p className="text-2xl md:text-3xl font-bold mt-1">
+                Bs. {totalVentas.toFixed(2)}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl shadow p-4">
+              <p className="text-xs md:text-sm text-slate-500">
+                Pedidos en el rango
+              </p>
+              <p className="text-2xl md:text-3xl font-bold mt-1">
+                {totalPedidos}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl shadow p-4">
+              <p className="text-xs md:text-sm text-slate-500">
+                Total en efectivo
+              </p>
+              <p className="text-2xl md:text-3xl font-bold mt-1">
+                Bs. {totalEfectivo.toFixed(2)}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl shadow p-4">
+              <p className="text-xs md:text-sm text-slate-500">
+                Total QR
+              </p>
+              <p className="text-2xl md:text-3xl font-bold mt-1">
+                Bs. {totalQr.toFixed(2)}
+              </p>
+            </div>
+          </div>
 
-            {platos.length > 0 && (
-              <div className="overflow-x-auto rounded-xl border border-slate-100">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium text-slate-600">
-                        Plato
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium text-slate-600">
-                        Cantidad
-                      </th>
-                      <th className="px-3 py-2 text-right font-medium text-slate-600">
-                        Ingresos
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium text-slate-600">
-                        % (gráfico)
-                      </th>
+          {/* ✅ Grafico 1: Lineas QR vs Efectivo */}
+          <div className="bg-white rounded-xl shadow p-4 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm md:text-base font-semibold">
+                Pagos por día (QR vs Efectivo)
+              </h3>
+              <span className="text-[11px] md:text-xs text-slate-500">
+                Comparación diaria en el rango
+              </span>
+            </div>
+
+            {pagosPorDia.length === 0 ? (
+              <p className="text-xs md:text-sm text-slate-500">
+                No hay datos suficientes para el gráfico.
+              </p>
+            ) : (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={pagosPorDia}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="fecha" />
+                    <YAxis />
+                    <Tooltip />
+                    <Line
+                      type="monotone"
+                      dataKey="efectivo"
+                      stroke="#22C55E"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      name="Efectivo (Bs.)"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="qr"
+                      stroke="#6366F1"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      name="QR (Bs.)"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* ✅ Grafico 2 + Pie: barras apiladas + pie total */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+            <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">
+              <h3 className="text-sm md:text-base font-semibold mb-2">
+                Distribución diaria de pagos (apilado)
+              </h3>
+
+              {pagosPorDia.length === 0 ? (
+                <p className="text-xs md:text-sm text-slate-500">
+                  No hay datos suficientes.
+                </p>
+              ) : (
+                <div className="h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={pagosPorDia}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="fecha" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="efectivo" stackId="a" fill="#22C55E" name="Efectivo" />
+                      <Bar dataKey="qr" stackId="a" fill="#6366F1" name="QR" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+
+            <div className="lg:col-span-1 bg-white rounded-xl shadow p-4">
+              <h3 className="text-sm md:text-base font-semibold mb-2">
+                Total del rango (QR vs Efectivo)
+              </h3>
+
+              {dataPiePagos.length === 0 ? (
+                <p className="text-xs md:text-sm text-slate-500">
+                  Sin cobros en el rango.
+                </p>
+              ) : (
+                <div className="h-56 flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={dataPiePagos}
+                        dataKey="value"
+                        nameKey="name"
+                        outerRadius={70}
+                        label={(e) => `${e.name}: ${e.value.toFixed(0)}`}
+                      >
+                        {dataPiePagos.map((entry, i) => (
+                          <Cell key={i} fill={COLORS_PAYMENTS[i % COLORS_PAYMENTS.length]} />
+                        ))}
+                      </Pie>
+                      <Legend />
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ✅ Grafico Top platos rango + destacado */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+            <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">
+              <h3 className="text-sm md:text-base font-semibold mb-2">
+                Top 5 platos más vendidos del rango
+              </h3>
+
+              {topPlatosRango.length === 0 ? (
+                <p className="text-xs md:text-sm text-slate-500">
+                  No hay datos de platos vendidos en el rango.
+                </p>
+              ) : (
+                <div className="h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={topPlatosRango} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" />
+                      <YAxis dataKey="nombre" type="category" width={110} />
+                      <Tooltip />
+                      <Bar dataKey="cantidad" name="Cantidad vendida">
+                        {topPlatosRango.map((_, i) => (
+                          <Cell key={i} fill={COLORS_BARS[i % COLORS_BARS.length]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+
+            <div className="lg:col-span-1 bg-white rounded-xl shadow p-4 flex flex-col justify-center">
+              <h3 className="text-sm md:text-base font-semibold mb-2">
+                🏆 Plato #1 del rango
+              </h3>
+
+              {!platoMasVendido ? (
+                <p className="text-xs md:text-sm text-slate-500">
+                  Sin datos aún.
+                </p>
+              ) : (
+                <div className="text-center">
+                  <p className="text-lg font-bold text-indigo-700">
+                    {platoMasVendido.nombre}
+                  </p>
+                  <p className="text-3xl font-extrabold mt-1">
+                    {platoMasVendido.cantidad}
+                  </p>
+                  <p className="text-xs text-slate-500">unidades vendidas</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Tabla detalle */}
+          <div className="bg-white rounded-xl shadow p-4">
+            <h3 className="text-sm md:text-base font-semibold mb-2">
+              Detalle diario del rango
+            </h3>
+
+            {datosDiarios.length === 0 ? (
+              <p className="text-xs md:text-sm text-slate-500">
+                No se encontraron datos para el rango seleccionado.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-xs md:text-sm">
+                  <thead>
+                    <tr className="text-left text-slate-500 border-b">
+                      <th className="py-1 pr-2">Fecha</th>
+                      <th className="py-1 pr-2">Pedidos</th>
+                      <th className="py-1 pr-2">Ventas (Bs.)</th>
+                      <th className="py-1 pr-2">Efectivo (Bs.)</th>
+                      <th className="py-1 pr-2">QR (Bs.)</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {platos.map((p) => {
-                      const cantidad = Number(p.cantidad_vendida || 0);
-                      const ancho = maxCantidadVendida
-                        ? Math.max(5, (cantidad / maxCantidadVendida) * 100)
-                        : 0;
-
+                    {datosDiarios.map((d) => {
+                      const r = d.resumen || {};
                       return (
-                        <tr
-                          key={p.id_plato}
-                          className="border-t"
-                        >
-                          <td className="px-3 py-2">
-                            {p.nombre}
+                        <tr key={d.fecha} className="border-b last:border-0">
+                          <td className="py-1 pr-2">
+                            {formatearFechaBonita(d.fecha)}
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            {cantidad}
+                          <td className="py-1 pr-2">
+                            {Number(r.total_pedidos || 0)}
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            {formatearMoneda(
-                              p.total_vendido ?? 0
-                            )}
+                          <td className="py-1 pr-2">
+                            Bs. {Number(r.total_general || 0).toFixed(2)}
                           </td>
-                          <td className="px-3 py-2">
-                            <div className="w-full bg-slate-100 rounded-full h-2">
-                              <div
-                                className="h-2 rounded-full bg-purple-500"
-                                style={{ width: `${ancho}%` }}
-                              ></div>
-                            </div>
+                          <td className="py-1 pr-2">
+                            Bs. {Number(r.total_efectivo || 0).toFixed(2)}
+                          </td>
+                          <td className="py-1 pr-2">
+                            Bs. {Number(r.total_qr || 0).toFixed(2)}
                           </td>
                         </tr>
                       );
@@ -248,16 +498,10 @@ const AdminReportes = () => {
                 </table>
               </div>
             )}
-          </section>
+          </div>
         </>
       )}
-
-      {!loading && !error && !resumen && (
-        <p className="text-sm text-slate-500">
-          Selecciona una fecha para ver el reporte.
-        </p>
-      )}
-    </div>
+    </>
   );
 };
 

@@ -6,6 +6,7 @@ import {
   updateUsuario,
   deleteUsuario
 } from '../models/usuarioModel.js';
+import { getIO } from '../socket.js';
 
 // 📋 Listar usuarios
 export const listarUsuarios = async (_req, res) => {
@@ -43,6 +44,11 @@ export const crearUsuarioHandler = async (req, res) => {
     }
 
     const nuevo = await createUsuario({ nombre_completo, alias, password, rol });
+
+    const io = getIO();
+    io.emit('usuario:nuevo', nuevo);
+    io.to('rol:ADMIN').emit('admin:refresh', { tipo: 'usuarios' });
+
     res.status(201).json(nuevo);
   } catch (error) {
     console.error('❌ Error al crear usuario:', error);
@@ -58,6 +64,11 @@ export const actualizarUsuarioHandler = async (req, res) => {
 
     const actualizado = await updateUsuario(id, datos);
     if (!actualizado) return res.status(404).json({ mensaje: 'Usuario no encontrado' });
+
+    const io = getIO();
+    io.emit('usuario:actualizado', actualizado);
+    io.to('rol:ADMIN').emit('admin:refresh', { tipo: 'usuarios' });
+
     res.status(200).json(actualizado);
   } catch (error) {
     console.error('❌ Error al actualizar usuario:', error);
@@ -71,6 +82,11 @@ export const eliminarUsuarioHandler = async (req, res) => {
     const { id } = req.params;
     const eliminado = await deleteUsuario(id);
     if (!eliminado) return res.status(404).json({ mensaje: 'Usuario no encontrado' });
+
+    const io = getIO();
+    io.emit('usuario:eliminado', { id_usuario: id });
+    io.to('rol:ADMIN').emit('admin:refresh', { tipo: 'usuarios' });
+
     res.status(200).json({ mensaje: 'Usuario desactivado correctamente' });
   } catch (error) {
     console.error('❌ Error al eliminar usuario:', error);

@@ -1,6 +1,7 @@
 // src/pages/Clientes.jsx
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../hooks/useSocket';
 import {
   obtenerClientes,
   crearCliente,
@@ -9,7 +10,7 @@ import {
 } from '../../services/clienteService';
 
 const Clientes = () => {
-  const { token } = useAuth(); // ⚠️ Asegúrate que tu AuthContext exponga 'token'
+  const { token } = useAuth();
   const [clientes, setClientes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
@@ -48,6 +49,16 @@ const Clientes = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ SOCKET: refresco en vivo
+  useSocket(token, {
+    'cliente:nuevo': () => cargarClientes(),
+    'cliente:actualizado': () => cargarClientes(),
+    'cliente:eliminado': () => cargarClientes(),
+    'admin:refresh': (p) => {
+      if (p?.tipo === 'clientes') cargarClientes();
+    },
+  });
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -68,8 +79,8 @@ const Clientes = () => {
       } else {
         await crearCliente(form, token);
       }
-      await cargarClientes();
       resetForm();
+      cargarClientes(); // redundante pero seguro
     } catch (err) {
       console.error(err);
       setError('Ocurrió un error al guardar el cliente');
@@ -93,7 +104,7 @@ const Clientes = () => {
     try {
       setError('');
       await eliminarCliente(id, token);
-      await cargarClientes();
+      cargarClientes();
     } catch (err) {
       console.error(err);
       setError('No se pudo eliminar el cliente');

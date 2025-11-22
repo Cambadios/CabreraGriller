@@ -1,5 +1,6 @@
 // backend/src/controllers/compraController.js
 import { createCompra, getComprasPorFecha } from '../models/compraModel.js';
+import { getIO } from '../socket.js';
 
 /**
  * POST /api/compras
@@ -7,10 +8,10 @@ import { createCompra, getComprasPorFecha } from '../models/compraModel.js';
  */
 export const crearCompraHandler = async (req, res) => {
   try {
-    const id_usuario = req.user?.id_usuario; // viene del token (authMiddleware)
+    const id_usuario = req.user?.id_usuario; // viene del token
 
     const {
-      fecha,        // 'YYYY-MM-DD'
+      fecha,
       categoria,
       descripcion,
       proveedor,
@@ -19,9 +20,7 @@ export const crearCompraHandler = async (req, res) => {
     } = req.body;
 
     if (!id_usuario) {
-      return res
-        .status(401)
-        .json({ mensaje: 'Usuario no autenticado' });
+      return res.status(401).json({ mensaje: 'Usuario no autenticado' });
     }
 
     if (!fecha || !descripcion || monto === undefined || monto === null) {
@@ -47,15 +46,18 @@ export const crearCompraHandler = async (req, res) => {
       observaciones: observaciones || null,
     });
 
+    const io = getIO();
+    io.emit('compra:nueva', nuevaCompra);
+    io.to('rol:ADMIN').emit('admin:refresh', { tipo: 'compras' });
+    io.to('rol:ADMIN').emit('admin:refresh', { tipo: 'gananciaNeta' });
+
     return res.status(201).json({
       mensaje: 'Compra registrada correctamente',
       compra: nuevaCompra,
     });
   } catch (error) {
     console.error('❌ Error al crear compra:', error);
-    return res
-      .status(500)
-      .json({ mensaje: 'Error al registrar la compra' });
+    return res.status(500).json({ mensaje: 'Error al registrar la compra' });
   }
 };
 
@@ -69,7 +71,7 @@ export const listarComprasPorFechaHandler = async (req, res) => {
 
     if (!fecha) {
       const hoy = new Date();
-      fecha = hoy.toISOString().substring(0, 10); // 'YYYY-MM-DD'
+      fecha = hoy.toISOString().substring(0, 10);
     }
 
     const compras = await getComprasPorFecha(fecha);
@@ -79,8 +81,7 @@ export const listarComprasPorFechaHandler = async (req, res) => {
     console.error('❌ Error al obtener compras por fecha:', error);
     return res.status(500).json({
       mensaje: 'Error al obtener las compras',
-      detalle: error.message, // 👈 así ves el error exacto en el response
+      detalle: error.message,
     });
   }
 };
-

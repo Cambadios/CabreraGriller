@@ -1,6 +1,7 @@
 // src/pages/admin/AdminPlatos.jsx
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../hooks/useSocket';
 import {
   getPlatos,
   createPlato,
@@ -18,11 +19,11 @@ const AdminPlatos = () => {
   const [formData, setFormData] = useState({
     id_plato: null,
     nombre: '',
-    descripcion: '', // observaciones
+    descripcion: '',
     precio: '',
-    categoria: '', // tipo_plato
-    disponible: true, // estado
-    stock_actual: '', // 👈 NUEVO
+    categoria: '',
+    disponible: true,
+    stock_actual: '',
   });
 
   const [imagenFile, setImagenFile] = useState(null);
@@ -31,7 +32,6 @@ const AdminPlatos = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
-  // 🔍 Buscador
   const [busqueda, setBusqueda] = useState('');
 
   const cargarPlatos = async () => {
@@ -48,14 +48,21 @@ const AdminPlatos = () => {
   };
 
   useEffect(() => {
-    if (token) {
-      cargarPlatos();
-    }
+    if (token) cargarPlatos();
   }, [token]);
+
+  // ✅ SOCKET: refresco en vivo
+  useSocket(token, {
+    'plato:nuevo': () => cargarPlatos(),
+    'plato:actualizado': () => cargarPlatos(),
+    'plato:eliminado': () => cargarPlatos(),
+    'admin:refresh': (p) => {
+      if (p?.tipo === 'platos' || p?.tipo === 'stock') cargarPlatos();
+    },
+  });
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-
     setFormData((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
@@ -81,7 +88,7 @@ const AdminPlatos = () => {
       precio: '',
       categoria: '',
       disponible: true,
-      stock_actual: '', // 👈 reset
+      stock_actual: '',
     });
     setImagenFile(null);
     setImagenPreview(null);
@@ -98,16 +105,11 @@ const AdminPlatos = () => {
       fd.append('nombre', formData.nombre);
       fd.append('tipo_plato', formData.categoria);
       fd.append('precio', formData.precio || '0');
-
-      // 👇 AHORA ENVIAMOS EL STOCK REAL DEL FORM
       fd.append('stock_actual', formData.stock_actual || '0');
-
       fd.append('estado', formData.disponible ? 'true' : 'false');
       fd.append('observaciones', formData.descripcion || '');
 
-      if (imagenFile) {
-        fd.append('imagen', imagenFile);
-      }
+      if (imagenFile) fd.append('imagen', imagenFile);
 
       if (isEditing && formData.id_plato != null) {
         await updatePlato(token, formData.id_plato, fd);
@@ -136,7 +138,7 @@ const AdminPlatos = () => {
           ? plato.estado
           : Boolean(plato.estado),
       stock_actual:
-        plato.stock_actual != null ? String(plato.stock_actual) : '', // 👈 cargamos stock
+        plato.stock_actual != null ? String(plato.stock_actual) : '',
     });
 
     setImagenFile(null);
@@ -161,7 +163,6 @@ const AdminPlatos = () => {
     }
   };
 
-  // 🔍 Filtrado por búsqueda (nombre / tipo_plato / observaciones)
   const platosFiltrados = useMemo(() => {
     const term = busqueda.trim().toLowerCase();
     if (!term) return platos;
@@ -237,7 +238,6 @@ const AdminPlatos = () => {
             />
           </div>
 
-          {/* 👇 NUEVO CAMPO: STOCK */}
           <div>
             <label className="block text-sm font-medium mb-1">
               Stock actual
@@ -269,7 +269,6 @@ const AdminPlatos = () => {
             </label>
           </div>
 
-          {/* Imagen */}
           <div className="md:col-span-2">
             <label className="block text-sm font-medium mb-1">Imagen</label>
             <input
@@ -291,7 +290,6 @@ const AdminPlatos = () => {
             )}
           </div>
 
-          {/* Descripción */}
           <div className="md:col-span-2">
             <label className="block text-sm font-medium mb-1">
               Descripción
@@ -302,7 +300,7 @@ const AdminPlatos = () => {
               onChange={handleChange}
               className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring focus:ring-slate-300"
               rows={3}
-              placeholder="Describe brevemente el plato, ingredientes, tamaño, etc."
+              placeholder="Describe brevemente el plato..."
             />
           </div>
 
@@ -333,13 +331,12 @@ const AdminPlatos = () => {
         </form>
       </section>
 
-      {/* LISTADO EN CARDS */}
+      {/* LISTADO */}
       <section className="bg-white rounded-xl shadow p-4 md:p-6">
         <div className="flex flex-col md:flex-row md:items-center gap-3 md:justify-between mb-4">
           <h3 className="text-lg font-semibold">Lista de platos</h3>
 
           <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-            {/* Buscador */}
             <div className="relative flex-1">
               <input
                 type="text"
@@ -377,7 +374,6 @@ const AdminPlatos = () => {
                 key={plato.id_plato}
                 className="border rounded-xl overflow-hidden shadow-sm flex flex-col"
               >
-                {/* Imagen arriba */}
                 <div className="w-full h-32 bg-slate-100 flex items-center justify-center overflow-hidden">
                   {plato.imagen_url ? (
                     <img
@@ -386,13 +382,10 @@ const AdminPlatos = () => {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <span className="text-xs text-slate-400">
-                      Sin imagen
-                    </span>
+                    <span className="text-xs text-slate-400">Sin imagen</span>
                   )}
                 </div>
 
-                {/* Contenido */}
                 <div className="p-3 flex flex-col gap-2 flex-1">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -404,7 +397,6 @@ const AdminPlatos = () => {
                           {plato.tipo_plato}
                         </p>
                       )}
-                      {/* 👇 Mostrar stock en la card */}
                       <p className="text-[11px] text-slate-600 mt-0.5">
                         Stock: {plato.stock_actual ?? 0}
                       </p>
@@ -423,12 +415,10 @@ const AdminPlatos = () => {
                   <div className="flex items-center justify-between mt-auto pt-1">
                     <span
                       className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold
-                        ${
-                          plato.estado
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-slate-200 text-slate-600'
-                        }
-                      `}
+                        ${plato.estado
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-slate-200 text-slate-600'
+                        }`}
                     >
                       {plato.estado ? 'Disponible' : 'No disponible'}
                     </span>

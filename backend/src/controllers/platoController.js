@@ -6,6 +6,7 @@ import {
   updatePlato,
   deletePlato,
 } from '../models/platoModel.js';
+import { getIO } from '../socket.js';
 
 // 📋 Listar platos
 export const listarPlatos = async (req, res) => {
@@ -23,9 +24,7 @@ export const obtenerPlato = async (req, res) => {
   try {
     const { id } = req.params;
     const plato = await getPlatoById(id);
-    if (!plato) {
-      return res.status(404).json({ mensaje: 'Plato no encontrado' });
-    }
+    if (!plato) return res.status(404).json({ mensaje: 'Plato no encontrado' });
     res.status(200).json(plato);
   } catch (error) {
     console.error('❌ Error al obtener plato:', error);
@@ -33,22 +32,19 @@ export const obtenerPlato = async (req, res) => {
   }
 };
 
-// ➕ Crear plato (con subida de imagen)
+// ➕ Crear plato
 export const crearPlatoHandler = async (req, res) => {
   try {
     const { nombre, tipo_plato, precio, stock_actual } = req.body;
 
-    // Validaciones básicas
     if (!nombre || !tipo_plato || !precio) {
       return res.status(400).json({
         mensaje: 'Los campos nombre, tipo_plato y precio son obligatorios',
       });
     }
 
-    // 📷 Si viene un archivo (imagen) desde multer
     let imagen_url = null;
     if (req.file) {
-      // Aquí construimos una URL accesible desde el frontend
       imagen_url = `${req.protocol}://${req.get('host')}/uploads/platos/${req.file.filename}`;
     }
 
@@ -57,8 +53,12 @@ export const crearPlatoHandler = async (req, res) => {
       tipo_plato,
       precio: Number(precio),
       stock_actual: stock_actual != null ? Number(stock_actual) : 0,
-      imagen_url, // se guarda la ruta/URL interna en BD
+      imagen_url,
     });
+
+    const io = getIO();
+    io.emit('plato:nuevo', nuevoPlato);
+    io.to('rol:ADMIN').emit('admin:refresh', { tipo: 'platos' });
 
     res.status(201).json(nuevoPlato);
   } catch (error) {
@@ -67,12 +67,10 @@ export const crearPlatoHandler = async (req, res) => {
   }
 };
 
-// ✏️ Actualizar plato (posible nueva imagen)
+// ✏️ Actualizar plato
 export const actualizarPlatoHandler = async (req, res) => {
   try {
     const { id } = req.params;
-
-    // Tomamos los datos que vengan en el body
     const {
       nombre,
       tipo_plato,
@@ -91,16 +89,17 @@ export const actualizarPlatoHandler = async (req, res) => {
       observaciones,
     };
 
-    // 📷 Si el usuario sube una nueva imagen, la reemplazamos
     if (req.file) {
-      datosActualizados.imagen_url = `${req.protocol}://${req.get('host')}/uploads/platos/${req.file.filename}`;
+      datosActualizados.imagen_url =
+        `${req.protocol}://${req.get('host')}/uploads/platos/${req.file.filename}`;
     }
 
     const actualizado = await updatePlato(id, datosActualizados);
+    if (!actualizado) return res.status(404).json({ mensaje: 'Plato no encontrado' });
 
-    if (!actualizado) {
-      return res.status(404).json({ mensaje: 'Plato no encontrado' });
-    }
+    const io = getIO();
+    io.emit('plato:actualizado', actualizado);
+    io.to('rol:ADMIN').emit('admin:refresh', { tipo: 'platos' });
 
     res.status(200).json(actualizado);
   } catch (error) {
@@ -109,14 +108,17 @@ export const actualizarPlatoHandler = async (req, res) => {
   }
 };
 
-// ❌ Eliminar (desactivar) plato
+// ❌ Eliminar plato
 export const eliminarPlatoHandler = async (req, res) => {
   try {
     const { id } = req.params;
     const eliminado = await deletePlato(id);
-    if (!eliminado) {
-      return res.status(404).json({ mensaje: 'Plato no encontrado' });
-    }
+    if (!eliminado) return res.status(404).json({ mensaje: 'Plato no encontrado' });
+
+    const io = getIO();
+    io.emit('plato:eliminado', { id_plato: id });
+    io.to('rol:ADMIN').emit('admin:refresh', { tipo: 'platos' });
+
     res.status(200).json({ mensaje: 'Plato eliminado correctamente' });
   } catch (error) {
     console.error('❌ Error al eliminar plato:', error);

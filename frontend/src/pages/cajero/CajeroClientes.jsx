@@ -1,6 +1,7 @@
 // src/pages/cajero/CajeroClientes.jsx
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../hooks/useSocket';
 import {
   obtenerClientes,
   crearCliente,
@@ -47,6 +48,16 @@ const CajeroClientes = () => {
     cargarClientes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ✅ SOCKET: clientes en vivo
+  useSocket(token, {
+    'cliente:nuevo': () => cargarClientes(),
+    'cliente:actualizado': () => cargarClientes(),
+    'cliente:eliminado': () => cargarClientes(),
+    'admin:refresh': (p) => {
+      if (p?.tipo === 'clientes') cargarClientes();
+    },
+  });
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -111,9 +122,7 @@ const CajeroClientes = () => {
         </h2>
 
         {error && (
-          <div className="mb-3 text-sm text-red-600">
-            {error}
-          </div>
+          <div className="mb-3 text-sm text-red-600">{error}</div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -132,9 +141,7 @@ const CajeroClientes = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">
-              Teléfono
-            </label>
+            <label className="block text-sm font-medium mb-1">Teléfono</label>
             <input
               type="text"
               name="telefono"
@@ -146,9 +153,7 @@ const CajeroClientes = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">
-              Dirección
-            </label>
+            <label className="block text-sm font-medium mb-1">Dirección</label>
             <input
               type="text"
               name="direccion"

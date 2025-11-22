@@ -1,6 +1,7 @@
 // src/pages/admin/AdminCompras.jsx
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../hooks/useSocket';
 import { getComprasPorFecha, crearCompra } from '../../services/compraService';
 
 const hoyStr = () => new Date().toISOString().substring(0, 10);
@@ -8,14 +9,12 @@ const hoyStr = () => new Date().toISOString().substring(0, 10);
 const AdminCompras = () => {
   const { token } = useAuth();
 
-  // 🔹 Filtro de fecha para listar compras
   const [fechaFiltro, setFechaFiltro] = useState(hoyStr);
   const [compras, setCompras] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
   const [totalDia, setTotalDia] = useState(0);
 
-  // 🔹 Formulario para nueva compra
   const [form, setForm] = useState({
     fecha: hoyStr(),
     categoria: '',
@@ -51,6 +50,17 @@ const AdminCompras = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ SOCKET: refresco en vivo
+  useSocket(token, {
+    'compra:nueva': (compra) => {
+      const f = compra?.fecha?.substring(0, 10);
+      if (!f || f === fechaFiltro) cargarCompras(fechaFiltro);
+    },
+    'admin:refresh': (p) => {
+      if (p?.tipo === 'compras') cargarCompras(fechaFiltro);
+    },
+  });
+
   const handleBuscar = (e) => {
     e.preventDefault();
     cargarCompras(fechaFiltro);
@@ -85,11 +95,9 @@ const AdminCompras = () => {
         observaciones: form.observaciones || null,
       });
 
-      // Después de guardar, recargamos el listado del día de esa compra
       setFechaFiltro(form.fecha);
       await cargarCompras(form.fecha);
 
-      // Limpiar algunos campos
       setForm((prev) => ({
         ...prev,
         categoria: '',
@@ -116,7 +124,7 @@ const AdminCompras = () => {
         </p>
       </div>
 
-      {/* 🔹 Formulario nueva compra */}
+      {/* Formulario nueva compra */}
       <div className="bg-white rounded-xl shadow p-4 space-y-4">
         <h2 className="text-lg font-semibold">Registrar nueva compra</h2>
 
@@ -180,7 +188,7 @@ const AdminCompras = () => {
               name="descripcion"
               value={form.descripcion}
               onChange={handleChangeForm}
-              placeholder="Ej: 10 kg de tomate, 5 kg de carne molida..."
+              placeholder="Ej: 10 kg de tomate, 5 kg de carne..."
               className="w-full border rounded-md px-3 py-2 text-sm"
             />
           </div>
@@ -209,7 +217,7 @@ const AdminCompras = () => {
               name="observaciones"
               value={form.observaciones}
               onChange={handleChangeForm}
-              placeholder="Ej: pago en efectivo, oferta, etc."
+              placeholder="Ej: pago en efectivo, oferta..."
               className="w-full border rounded-md px-3 py-2 text-sm"
             />
           </div>
@@ -226,7 +234,7 @@ const AdminCompras = () => {
         </form>
       </div>
 
-      {/* 🔹 Filtro y tabla de compras por fecha */}
+      {/* Filtro y tabla */}
       <div className="bg-white rounded-xl shadow p-4 space-y-4">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
           <form
@@ -284,18 +292,13 @@ const AdminCompras = () => {
             <tbody>
               {compras.length === 0 && !cargando && (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="px-3 py-4 text-center text-slate-500"
-                  >
+                  <td colSpan={7} className="px-3 py-4 text-center text-slate-500">
                     No hay compras registradas para esta fecha.
                   </td>
                 </tr>
               )}
 
               {compras.map((c, idx) => {
-                // backend esperado:
-                // { id_compra, fecha, categoria, descripcion, proveedor, monto, observaciones }
                 const fechaStr = c.fecha
                   ? new Date(c.fecha).toISOString().substring(0, 10)
                   : '-';
@@ -304,15 +307,9 @@ const AdminCompras = () => {
                   <tr key={c.id_compra || idx} className="border-t">
                     <td className="px-3 py-2 align-top">{idx + 1}</td>
                     <td className="px-3 py-2 align-top">{fechaStr}</td>
-                    <td className="px-3 py-2 align-top">
-                      {c.categoria || '-'}
-                    </td>
-                    <td className="px-3 py-2 align-top">
-                      {c.descripcion}
-                    </td>
-                    <td className="px-3 py-2 align-top">
-                      {c.proveedor || '-'}
-                    </td>
+                    <td className="px-3 py-2 align-top">{c.categoria || '-'}</td>
+                    <td className="px-3 py-2 align-top">{c.descripcion}</td>
+                    <td className="px-3 py-2 align-top">{c.proveedor || '-'}</td>
                     <td className="px-3 py-2 align-top text-right">
                       {Number(c.monto || 0).toFixed(2)}
                     </td>

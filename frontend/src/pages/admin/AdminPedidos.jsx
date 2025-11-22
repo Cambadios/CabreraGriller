@@ -1,6 +1,7 @@
 // src/pages/admin/AdminPedidos.jsx
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../hooks/useSocket';
 import { getPedidosPorFecha } from '../../services/pedidoService';
 
 const formatearFecha = (date) => date.toISOString().substring(0, 10);
@@ -21,7 +22,6 @@ const AdminPedidos = () => {
       const data = await getPedidosPorFecha(token, f);
       setPedidos(data || []);
 
-      // total del día
       const suma = (data || []).reduce(
         (acc, p) => acc + Number(p.total || 0),
         0
@@ -39,6 +39,18 @@ const AdminPedidos = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ SOCKET: refresco en vivo
+  useSocket(token, {
+    'pedido:nuevo': () => cargarPedidos(fecha),
+    'pedido:actualizado': () => cargarPedidos(fecha),
+    'pedido:pagado': () => cargarPedidos(fecha),
+    'admin:refresh': (p) => {
+      if (p?.tipo === 'pedidos' || p?.tipo === 'resumenDia') {
+        cargarPedidos(fecha);
+      }
+    },
+  });
+
   const handleBuscar = (e) => {
     e.preventDefault();
     cargarPedidos(fecha);
@@ -48,7 +60,6 @@ const AdminPedidos = () => {
     <div className="p-4 md:p-6">
       <h1 className="text-2xl font-semibold mb-4">📋 Pedidos del día (Admin)</h1>
 
-      {/* Filtro por fecha */}
       <form
         onSubmit={handleBuscar}
         className="flex flex-col md:flex-row gap-3 items-start md:items-end mb-4"
@@ -71,19 +82,19 @@ const AdminPedidos = () => {
         </button>
       </form>
 
-      {/* Estado */}
       {cargando && <p>Cargando pedidos...</p>}
       {error && <p className="text-red-600 mb-2">{error}</p>}
 
-      {/* Resumen del día */}
       <div className="mb-4">
         <p className="font-medium">
-          Total del día: <span className="font-bold">Bs. {totalDia.toFixed(2)}</span>
+          Total del día:{' '}
+          <span className="font-bold">Bs. {totalDia.toFixed(2)}</span>
         </p>
-        <p className="text-sm text-gray-600">Pedidos encontrados: {pedidos.length}</p>
+        <p className="text-sm text-gray-600">
+          Pedidos encontrados: {pedidos.length}
+        </p>
       </div>
 
-      {/* Tabla */}
       <div className="overflow-x-auto border rounded-lg">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-100">

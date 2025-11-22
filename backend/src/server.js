@@ -9,6 +9,9 @@ import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import http from 'http'; // 👈 NUEVO
+import { initSocket } from './socket.js'; // 👈 NUEVO
+
 import { pingDB } from './db/db.js';
 
 import platoRoutes from './routes/platoRoutes.js';
@@ -39,7 +42,6 @@ if (process.env.NODE_ENV !== 'production') {
 
 // 📂 Servir archivos estáticos de imágenes (subidas)
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
-// Ojo: esto asume que tu carpeta "uploads" está en la raíz del proyecto, al mismo nivel que "src"
 
 // Variables globales
 const PORT = process.env.PORT || 3000;
@@ -70,7 +72,9 @@ app.use('/api/pedidos', verificarToken, pedidoRoutes);
 app.use('/api/tickets', verificarToken, ticketRoutes);
 app.use('/api/usuarios', verificarToken, usuarioRoutes);
 app.use('/api/reportes', verificarToken, reporteRoutes);
-app.use('/api/compras', compraRoutes);
+
+// ⚠️ OJO: faltaba verificarToken aquí si compras es protegida
+app.use('/api/compras', verificarToken, compraRoutes);
 
 // 404 básico
 app.use((req, res) => {
@@ -82,8 +86,13 @@ app.use((req, res) => {
 // Manejo de errores global
 app.use(errorHandler);
 
+// ✅ Crear server HTTP y levantar sockets
+const httpServer = http.createServer(app);
+initSocket(httpServer);
+
 // INICIO DEL SERVIDOR
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
   console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🧠 WebSocket activo en el mismo puerto`);
 });

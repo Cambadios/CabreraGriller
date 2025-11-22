@@ -1,5 +1,7 @@
 // src/pages/Usuarios.jsx
 import { useEffect, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../hooks/useSocket';
 import {
   fetchUsuarios,
   createUsuario,
@@ -7,14 +9,15 @@ import {
   deleteUsuario,
 } from '../../services/usuarioService';
 
-const ROLES = ['ADMIN', 'MOZO', 'COCINA', 'CAJA']; // ajusta según tu enum user_role
+const ROLES = ['ADMIN', 'MOZO', 'COCINA', 'CAJA'];
 
 export default function UsuariosPage() {
+  const { token } = useAuth();
+
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // para formulario
   const [formData, setFormData] = useState({
     nombre_completo: '',
     alias: '',
@@ -23,18 +26,18 @@ export default function UsuariosPage() {
     estado: true,
   });
 
-  const [editId, setEditId] = useState(null); // null = creando, no editando
+  const [editId, setEditId] = useState(null);
 
-  // Cargar usuarios al inicio
   useEffect(() => {
     cargarUsuarios();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   const cargarUsuarios = async () => {
     try {
       setLoading(true);
       setError('');
-      const data = await fetchUsuarios();
+      const data = await fetchUsuarios(token);
       setUsuarios(data);
     } catch (err) {
       console.error(err);
@@ -43,6 +46,16 @@ export default function UsuariosPage() {
       setLoading(false);
     }
   };
+
+  // ✅ SOCKET usuarios en vivo
+  useSocket(token, {
+    'usuario:nuevo': () => cargarUsuarios(),
+    'usuario:actualizado': () => cargarUsuarios(),
+    'usuario:eliminado': () => cargarUsuarios(),
+    'admin:refresh': (p) => {
+      if (p?.tipo === 'usuarios') cargarUsuarios();
+    },
+  });
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -57,7 +70,6 @@ export default function UsuariosPage() {
     try {
       setError('');
 
-      // Validación básica
       if (!formData.nombre_completo || !formData.alias || !formData.rol) {
         setError('Nombre, alias y rol son obligatorios');
         return;
@@ -69,7 +81,6 @@ export default function UsuariosPage() {
       }
 
       if (editId) {
-        // 🟡 Modo edición
         const payload = {
           nombre_completo: formData.nombre_completo,
           alias: formData.alias,
@@ -77,15 +88,13 @@ export default function UsuariosPage() {
           estado: formData.estado,
         };
 
-        // Solo mandamos password si el usuario escribió algo nuevo
         if (formData.password.trim() !== '') {
           payload.password = formData.password;
         }
 
-        await updateUsuario(editId, payload);
+        await updateUsuario(token, editId, payload);
       } else {
-        // 🟢 Modo creación
-        await createUsuario({
+        await createUsuario(token, {
           nombre_completo: formData.nombre_completo,
           alias: formData.alias,
           password: formData.password,
@@ -93,7 +102,6 @@ export default function UsuariosPage() {
         });
       }
 
-      // Limpiar y recargar lista
       resetForm();
       cargarUsuarios();
     } catch (err) {
@@ -113,9 +121,7 @@ export default function UsuariosPage() {
     });
   };
 
-  const handleCancelEdit = () => {
-    resetForm();
-  };
+  const handleCancelEdit = () => resetForm();
 
   const resetForm = () => {
     setEditId(null);
@@ -134,7 +140,7 @@ export default function UsuariosPage() {
     if (!ok) return;
 
     try {
-      await deleteUsuario(id);
+      await deleteUsuario(token, id);
       cargarUsuarios();
     } catch (err) {
       console.error(err);
@@ -153,9 +159,7 @@ export default function UsuariosPage() {
         </h2>
 
         {error && (
-          <div className="mb-3 text-sm text-red-600">
-            {error}
-          </div>
+          <div className="mb-3 text-sm text-red-600">{error}</div>
         )}
 
         <form className="grid gap-3 md:grid-cols-2" onSubmit={handleSubmit}>
@@ -183,7 +187,11 @@ export default function UsuariosPage() {
 
           <div className="flex flex-col">
             <label className="text-sm font-medium">
-              Contraseña {editId && <span className="text-xs text-gray-500">(dejar vacío para no cambiar)</span>}
+              Contraseña {editId && (
+                <span className="text-xs text-gray-500">
+                  (dejar vacío para no cambiar)
+                </span>
+              )}
             </label>
             <input
               type="password"
@@ -204,9 +212,7 @@ export default function UsuariosPage() {
             >
               <option value="">-- Selecciona un rol --</option>
               {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
+                <option key={r} value={r}>{r}</option>
               ))}
             </select>
           </div>

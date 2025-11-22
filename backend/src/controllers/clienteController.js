@@ -6,6 +6,7 @@ import {
   updateCliente,
   deleteCliente
 } from '../models/clienteModel.js';
+import { getIO } from '../socket.js';
 
 // 📋 Listar todos los clientes
 export const listarClientes = async (req, res) => {
@@ -41,6 +42,12 @@ export const crearClienteHandler = async (req, res) => {
     }
 
     const nuevoCliente = await createCliente({ nombre_completo, telefono, direccion });
+
+    const io = getIO();
+    io.emit('cliente:nuevo', nuevoCliente);
+    io.to('rol:ADMIN').emit('admin:refresh', { tipo: 'clientes' });
+    io.to('rol:CAJERO').emit('cajero:refresh', { tipo: 'clientes' });
+
     res.status(201).json(nuevoCliente);
   } catch (error) {
     console.error('❌ Error al crear cliente:', error);
@@ -56,6 +63,12 @@ export const actualizarClienteHandler = async (req, res) => {
 
     const actualizado = await updateCliente(id, datos);
     if (!actualizado) return res.status(404).json({ mensaje: 'Cliente no encontrado' });
+
+    const io = getIO();
+    io.emit('cliente:actualizado', actualizado);
+    io.to('rol:ADMIN').emit('admin:refresh', { tipo: 'clientes' });
+    io.to('rol:CAJERO').emit('cajero:refresh', { tipo: 'clientes' });
+
     res.status(200).json(actualizado);
   } catch (error) {
     console.error('❌ Error al actualizar cliente:', error);
@@ -69,6 +82,11 @@ export const eliminarClienteHandler = async (req, res) => {
     const { id } = req.params;
     const eliminado = await deleteCliente(id);
     if (!eliminado) return res.status(404).json({ mensaje: 'Cliente no encontrado' });
+
+    const io = getIO();
+    io.emit('cliente:eliminado', { id_cliente: id });
+    io.to('rol:ADMIN').emit('admin:refresh', { tipo: 'clientes' });
+
     res.status(200).json({ mensaje: 'Cliente eliminado correctamente' });
   } catch (error) {
     console.error('❌ Error al eliminar cliente:', error);
