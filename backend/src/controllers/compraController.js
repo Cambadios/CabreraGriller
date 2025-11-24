@@ -8,7 +8,7 @@ import { getIO } from '../socket.js';
  */
 export const crearCompraHandler = async (req, res) => {
   try {
-    const id_usuario = req.user?.id_usuario; // viene del token
+    const id_usuario = req.id_usuario?.id_usuario; // viene del token
 
     const {
       fecha,

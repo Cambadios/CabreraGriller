@@ -15,21 +15,28 @@ export const initSocket = (httpServer) => {
   // ✅ Auth por token (JWT)
   io.use((socket, next) => {
     try {
-      const token = socket.handshake.auth?.token;
+      const token =
+        socket.handshake.auth?.token ||
+        socket.handshake.headers?.authorization?.split(" ")[1];
+
       if (!token) return next(new Error("No token"));
 
-      const payload = jwt.verify(token, process.env.JWT_SECRET);
+      const payload = jwt.verify(
+        token,
+        process.env.JWT_SECRET || "clave_super_secreta"
+      );
+
       socket.user = payload; // { id_usuario, rol, ... }
-      next();
+      return next();
     } catch (err) {
-      next(new Error("Token inválido"));
+      return next(new Error("Token inválido"));
     }
   });
 
   io.on("connection", (socket) => {
     console.log("🟢 Socket conectado:", socket.id, socket.user);
 
-    // ✅ Room por rol para emitir selectivo
+    // unir a salas por rol (para notificaciones)
     const rol = socket.user?.rol;
     if (rol) socket.join(`rol:${rol}`);
 
