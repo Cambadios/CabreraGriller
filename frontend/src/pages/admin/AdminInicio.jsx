@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getResumenDia } from '../../services/reporteService';
-import { motion } from 'framer-motion';
+
 import {
   LineChart,
   Line,
@@ -115,7 +115,7 @@ const TablaUltimosPedidos = ({ pedidos }) => {
               </td>
               <td className="py-1 pr-2">
                 <span
-                  className={`px-2 py-[2px] rounded-full text-[10px] md:text-[11px] ${
+                  className={`px-2 py-0.5 rounded-full text-[10px] md:text-[11px] ${
                     p.estado === 'PAGADO'
                       ? 'bg-emerald-100 text-emerald-700'
                       : 'bg-sky-100 text-sky-700'
