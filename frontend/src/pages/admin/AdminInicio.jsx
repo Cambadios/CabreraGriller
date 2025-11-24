@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getResumenDia } from '../../services/reporteService';
+import { motion } from 'framer-motion';
 
 import {
   LineChart,
