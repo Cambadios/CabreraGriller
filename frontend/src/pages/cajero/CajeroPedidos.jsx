@@ -1,100 +1,127 @@
 // src/pages/cajero/CajeroPedidos.jsx
-import { useEffect, useState, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { obtenerClientes } from '../../services/clienteService';
-import { getPlatos } from '../../services/platoService';
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import { obtenerClientes } from "../../services/clienteService";
+import { getPlatos } from "../../services/platoService";
+import { createPedido, actualizarPedido } from "../../services/pedidoService";
+
+// shadcn/ui
+import { Button } from "@/components/ui/button";
 import {
-  createPedido,
-  actualizarPedido,
-} from '../../services/pedidoService';
+  Card, CardContent, CardHeader, CardTitle, CardDescription,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+// icons
+import {
+  Search,
+  ShoppingCart,
+  Plus,
+  Minus,
+  Trash2,
+  CreditCard,
+  QrCode,
+  Clock3,
+  UtensilsCrossed,
+  Truck,
+  Store,
+  HandCoins,
+} from "lucide-react";
 
 const CajeroPedidos = () => {
   const { token, usuario } = useAuth();
   const [searchParams] = useSearchParams();
 
-  // Si viene ?pedido=123 → estamos continuando un pedido pendiente
-  const pedidoExistenteId = searchParams.get('pedido');
+  // ?pedido=123 => continuación
+  const pedidoExistenteId = searchParams.get("pedido");
   const esContinuacion = !!pedidoExistenteId;
 
   const [clientes, setClientes] = useState([]);
   const [platos, setPlatos] = useState([]);
 
-  const [clienteSeleccionado, setClienteSeleccionado] = useState('');
-  const [observaciones, setObservaciones] = useState('');
+  const [clienteSeleccionado, setClienteSeleccionado] = useState("");
+  const [observaciones, setObservaciones] = useState("");
 
-  // Tipo de servicio
-  const [tipoServicio, setTipoServicio] = useState('MESA'); // MESA | PARA_LLEVAR | RECOJO | DOMICILIO
+  // servicio
+  const [tipoServicio, setTipoServicio] = useState("MESA"); // MESA | PARA_LLEVAR | RECOJO | DOMICILIO
 
-  // Carrito (en modo continuación: SOLO NUEVOS platos que se suman al pedido existente)
+  // carrito
   const [items, setItems] = useState([]);
 
-  // UI filtros catálogo
-  const [busqueda, setBusqueda] = useState('');
-  const [tipoFiltro, setTipoFiltro] = useState('TODOS');
+  // filtros catálogo
+  const [busqueda, setBusqueda] = useState("");
+  const [tipoFiltro, setTipoFiltro] = useState("TODOS");
 
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
-  const [mensajeOk, setMensajeOk] = useState('');
+  const [error, setError] = useState("");
+  const [mensajeOk, setMensajeOk] = useState("");
   const [enviando, setEnviando] = useState(false);
 
-  // Modal de pago / ticket
+  // modal pago
   const [pagoModalAbierto, setPagoModalAbierto] = useState(false);
-  const [metodoPagoModal, setMetodoPagoModal] = useState('EFECTIVO'); // EFECTIVO | QR | PENDIENTE
-  const [montoRecibido, setMontoRecibido] = useState('');
+  const [metodoPagoModal, setMetodoPagoModal] = useState("EFECTIVO"); // EFECTIVO | QR | PENDIENTE
+  const [montoRecibido, setMontoRecibido] = useState("");
 
-  // Cuando es continuación, forzamos pago "PENDIENTE" (no se cobra, solo se agregan platos)
   useEffect(() => {
-    if (esContinuacion) {
-      setMetodoPagoModal('PENDIENTE');
-    }
+    if (esContinuacion) setMetodoPagoModal("PENDIENTE");
   }, [esContinuacion]);
 
-  // Cargar clientes y platos
+  // cargar datos
   useEffect(() => {
     const cargarDatos = async () => {
       try {
         setCargando(true);
-        setError('');
-
+        setError("");
         const [clientesData, platosData] = await Promise.all([
           obtenerClientes(token),
           getPlatos(token),
         ]);
-
-        setClientes(clientesData);
-        setPlatos(platosData);
+        setClientes(clientesData || []);
+        setPlatos(platosData || []);
       } catch (err) {
         console.error(err);
-        setError('Error al cargar clientes o platos');
+        setError("Error al cargar clientes o platos");
       } finally {
         setCargando(false);
       }
     };
-
     cargarDatos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Tipos de plato para filtros
+  // tipos para filtro
   const tiposPlato = useMemo(() => {
     const setTipos = new Set();
-    platos.forEach((p) => {
-      if (p.tipo_plato) setTipos.add(p.tipo_plato);
-    });
-    return ['TODOS', ...Array.from(setTipos)];
+    platos.forEach((p) => p?.tipo_plato && setTipos.add(p.tipo_plato));
+    return ["TODOS", ...Array.from(setTipos)];
   }, [platos]);
 
-  // Catálogo filtrado
+  // catálogo filtrado
   const platosFiltrados = useMemo(() => {
     const term = busqueda.trim().toLowerCase();
     return platos.filter((p) => {
       const coincideTipo =
-        tipoFiltro === 'TODOS' || p.tipo_plato === tipoFiltro;
+        tipoFiltro === "TODOS" || p.tipo_plato === tipoFiltro;
       const coincideTexto =
         !term ||
-        p.nombre.toLowerCase().includes(term) ||
-        (p.tipo_plato || '').toLowerCase().includes(term);
+        (p.nombre || "").toLowerCase().includes(term) ||
+        (p.tipo_plato || "").toLowerCase().includes(term);
       return coincideTipo && coincideTexto;
     });
   }, [platos, busqueda, tipoFiltro]);
@@ -102,14 +129,14 @@ const CajeroPedidos = () => {
   const total = useMemo(
     () =>
       items.reduce(
-        (acc, item) => acc + (Number(item.precio) || 0) * item.cantidad,
+        (acc, it) => acc + (Number(it.precio) || 0) * it.cantidad,
         0
       ),
     [items]
   );
 
   const cambio = useMemo(() => {
-    if (metodoPagoModal !== 'EFECTIVO') return 0;
+    if (metodoPagoModal !== "EFECTIVO") return 0;
     const recibido = Number(montoRecibido || 0);
     const diff = recibido - total;
     return diff > 0 ? diff : 0;
@@ -123,19 +150,20 @@ const CajeroPedidos = () => {
     [clientes, clienteSeleccionado]
   );
 
-  // Agregar 1 unidad desde catálogo (con control de stock)
+  // agregar desde catálogo (respeta stock)
   const handleAgregarDesdeCatalogo = (plato) => {
-    setMensajeOk('');
-    setError('');
+    setMensajeOk("");
+    setError("");
 
     const stock = plato.stock_actual ?? Infinity;
 
     setItems((prev) => {
       const existe = prev.find((it) => it.id_plato === plato.id_plato);
       const cantidadActual = existe ? existe.cantidad : 0;
+
       if (cantidadActual + 1 > stock) {
         setError(
-          `No hay más stock disponible de "${plato.nombre}". Stock actual: ${stock}`
+          `No hay más stock de "${plato.nombre}". Stock actual: ${stock}`
         );
         return prev;
       }
@@ -147,6 +175,7 @@ const CajeroPedidos = () => {
             : it
         );
       }
+
       return [
         ...prev,
         {
@@ -166,6 +195,7 @@ const CajeroPedidos = () => {
 
   const handleCambiarCantidadItem = (id_plato, nuevaCantidad) => {
     const cant = Number(nuevaCantidad) || 0;
+
     if (cant <= 0) {
       setItems((prev) => prev.filter((it) => it.id_plato !== id_plato));
       return;
@@ -173,9 +203,10 @@ const CajeroPedidos = () => {
 
     const plato = platos.find((p) => p.id_plato === id_plato);
     const stock = plato?.stock_actual ?? Infinity;
+
     if (cant > stock) {
       setError(
-        `No puedes dejar más de ${stock} unidades para ese plato (stock disponible).`
+        `No puedes poner más de ${stock} unidades (stock disponible).`
       );
       return;
     }
@@ -187,69 +218,68 @@ const CajeroPedidos = () => {
     );
   };
 
-  // Paso 1: validar y abrir modal de pago
+  // abrir pago
   const handleAbrirModalPago = () => {
-    if (!usuario || !usuario.id_usuario) {
+    if (!usuario?.id_usuario) {
       setError(
-        'No se encontró el usuario cajero (id_usuario). Revisa el AuthContext.'
+        "No se encontró id_usuario del cajero. Revisa AuthContext."
       );
       return;
     }
-
     if (items.length === 0) {
-      setError('Debes agregar al menos un plato');
+      setError("Debes agregar al menos un plato");
       return;
     }
 
-    setError('');
-    setMensajeOk('');
+    setError("");
+    setMensajeOk("");
     setPagoModalAbierto(true);
   };
 
-  // Paso 2: confirmar pago + crear o actualizar pedido
+  // confirmar
   const handleConfirmarPagoYCrearPedido = async () => {
-    // 🔹 MODO NUEVO PEDIDO (no viene ?pedido=)
+    // NUEVO PEDIDO
     if (!esContinuacion) {
-      if (metodoPagoModal === 'EFECTIVO') {
+      if (metodoPagoModal === "EFECTIVO") {
         const recibido = Number(montoRecibido || 0);
         if (recibido <= 0) {
-          setError('Debes indicar el monto recibido en efectivo');
+          setError("Debes indicar el monto recibido en efectivo");
           return;
         }
         if (recibido < total) {
-          setError('El monto recibido es menor al total a pagar');
+          setError("El monto recibido es menor al total a pagar");
           return;
         }
       }
 
       try {
-        setError('');
-        setMensajeOk('');
+        setError("");
+        setMensajeOk("");
         setEnviando(true);
 
         const infoServicioTexto = (() => {
           switch (tipoServicio) {
-            case 'MESA':
-              return 'SERVICIO: En mesa';
-            case 'PARA_LLEVAR':
-              return 'SERVICIO: Para llevar (mostrador)';
-            case 'RECOJO':
-              return 'SERVICIO: Pedido para recoger';
-            case 'DOMICILIO':
-              return 'SERVICIO: Envío a domicilio';
+            case "MESA":
+              return "SERVICIO: En mesa";
+            case "PARA_LLEVAR":
+              return "SERVICIO: Para llevar (mostrador)";
+            case "RECOJO":
+              return "SERVICIO: Pedido para recoger";
+            case "DOMICILIO":
+              return "SERVICIO: Envío a domicilio";
             default:
-              return 'SERVICIO: No especificado';
+              return "SERVICIO: No especificado";
           }
         })();
 
         const infoPagoTexto =
-          metodoPagoModal === 'EFECTIVO'
+          metodoPagoModal === "EFECTIVO"
             ? `PAGO: Efectivo (recibido Bs. ${Number(
                 montoRecibido || 0
               ).toFixed(2)}, cambio Bs. ${cambio.toFixed(2)})`
-            : metodoPagoModal === 'QR'
-            ? 'PAGO: QR'
-            : 'PAGO: PENDIENTE (NO PAGADO)';
+            : metodoPagoModal === "QR"
+            ? "PAGO: QR"
+            : "PAGO: PENDIENTE (NO PAGADO)";
 
         const observacionesFinal = [
           infoServicioTexto,
@@ -257,10 +287,10 @@ const CajeroPedidos = () => {
           observaciones,
         ]
           .filter(Boolean)
-          .join(' | ');
+          .join(" | ");
 
-        const tipo_entrega = tipoServicio === 'MESA' ? 'MESA' : 'LLEVAR';
-        const tipo_pago = metodoPagoModal; // EFECTIVO | QR | PENDIENTE
+        const tipo_entrega = tipoServicio === "MESA" ? "MESA" : "LLEVAR";
+        const tipo_pago = metodoPagoModal;
 
         const detalles = items.map((it) => ({
           id_plato: it.id_plato,
@@ -275,39 +305,36 @@ const CajeroPedidos = () => {
           observaciones: observacionesFinal || null,
         };
 
-        if (clienteSeleccionado) {
-          payload.id_cliente = Number(clienteSeleccionado);
-        }
+        if (clienteSeleccionado) payload.id_cliente = Number(clienteSeleccionado);
 
         await createPedido(token, payload);
 
-        setMensajeOk('✅ Pedido creado correctamente');
+        setMensajeOk("✅ Pedido creado correctamente");
         setItems([]);
-        setObservaciones('');
-        setClienteSeleccionado('');
-        setMetodoPagoModal('EFECTIVO');
-        setMontoRecibido('');
+        setObservaciones("");
+        setClienteSeleccionado("");
+        setMetodoPagoModal("EFECTIVO");
+        setMontoRecibido("");
         setPagoModalAbierto(false);
       } catch (err) {
         console.error(err);
-        setError(err.message || 'Error al crear el pedido');
+        setError(err.message || "Error al crear el pedido");
       } finally {
         setEnviando(false);
       }
-
       return;
     }
 
-    // 🔹 MODO CONTINUAR PEDIDO PENDIENTE (sí viene ?pedido=)
+    // CONTINUACIÓN
     if (esContinuacion) {
       if (items.length === 0) {
-        setError('Debes agregar al menos un plato para actualizar el pedido');
+        setError("Debes agregar al menos un plato para actualizar");
         return;
       }
 
       try {
-        setError('');
-        setMensajeOk('');
+        setError("");
+        setMensajeOk("");
         setEnviando(true);
 
         const detalles = items.map((it) => ({
@@ -318,69 +345,111 @@ const CajeroPedidos = () => {
         await actualizarPedido(token, Number(pedidoExistenteId), detalles);
 
         setMensajeOk(
-          `✅ Pedido #${pedidoExistenteId} actualizado correctamente (se sumaron los nuevos platos)`
+          `✅ Pedido #${pedidoExistenteId} actualizado (se sumaron los nuevos platos)`
         );
         setItems([]);
         setPagoModalAbierto(false);
-        setMontoRecibido('');
+        setMontoRecibido("");
       } catch (err) {
         console.error(err);
-        setError(err.message || 'Error al actualizar el pedido');
+        setError(err.message || "Error al actualizar el pedido");
       } finally {
         setEnviando(false);
       }
     }
   };
 
+  // ---------- UI ----------
   if (cargando) {
     return (
-      <div className="p-4">
-        <p className="text-sm text-slate-600">Cargando datos...</p>
+      <div className="p-3 md:p-6 space-y-3">
+        <Skeleton className="h-8 w-1/2" />
+        <Skeleton className="h-4 w-full" />
+        <div className="grid gap-3 lg:grid-cols-3">
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64 lg:col-span-2" />
+        </div>
       </div>
     );
   }
 
+  const servicioBtn = (key, label, Icon) => {
+    const active = tipoServicio === key;
+    return (
+      <Button
+        key={key}
+        type="button"
+        variant={active ? "default" : "outline"}
+        className="justify-start gap-2"
+        onClick={() => setTipoServicio(key)}
+      >
+        <Icon className="size-4" />
+        {label}
+      </Button>
+    );
+  };
+
+  const pagoBtn = (key, label, Icon, color = "default") => {
+    const active = metodoPagoModal === key;
+    return (
+      <Button
+        key={key}
+        type="button"
+        variant={active ? color : "outline"}
+        className="gap-2"
+        onClick={() => setMetodoPagoModal(key)}
+        disabled={esContinuacion}
+      >
+        <Icon className="size-4" />
+        {label}
+      </Button>
+    );
+  };
+
   return (
-    <div className="space-y-4 relative">
+    <div className="w-full p-3 sm:p-4 md:p-6 space-y-5">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Cajero - Tomar pedido
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
+            <ShoppingCart className="size-5 sm:size-6 text-primary" />
+            Cajero · Tomar pedido
           </h1>
-          <p className="text-sm text-slate-600">
-            Haz clic sobre los platos para agregarlos al pedido, selecciona el tipo
-            de servicio y (opcional) un cliente. El pago se define al confirmar.
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Agrega platos, elige servicio y confirma el pago al final.
           </p>
+
           {esContinuacion && (
-            <p className="mt-1 text-xs font-semibold text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1 inline-block">
-              Continuando pedido pendiente #{pedidoExistenteId}: solo se
-              sumarán estos platos al mismo pedido. No se crea un pedido nuevo.
-            </p>
+            <Badge variant="secondary" className="mt-2 w-fit">
+              Continuando pedido pendiente #{pedidoExistenteId} (solo se suman nuevos platos)
+            </Badge>
           )}
         </div>
-        <div className="mt-2 md:mt-0">
-          <div className="inline-flex items-baseline gap-2 rounded-xl border border-emerald-500 bg-emerald-50 px-4 py-2">
-            <span className="text-xs font-medium uppercase text-emerald-700">
+
+        <Card className="border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-950/30 w-fit">
+          <CardContent className="px-4 py-2 flex items-center gap-2">
+            <span className="text-xs font-medium uppercase text-emerald-700 dark:text-emerald-300">
               Total
             </span>
-            <span className="text-lg font-semibold text-emerald-800">
+            <span className="text-lg font-bold text-emerald-800 dark:text-emerald-200">
               Bs. {total.toFixed(2)}
             </span>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Alertas */}
+      {/* Alerts */}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
       {mensajeOk && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-3 py-2 rounded-lg">
-          {mensajeOk}
-        </div>
+        <Alert className="border-emerald-200 text-emerald-800 dark:text-emerald-200">
+          <AlertTitle>Listo</AlertTitle>
+          <AlertDescription>{mensajeOk}</AlertDescription>
+        </Alert>
       )}
 
       {/* Layout principal */}
@@ -388,150 +457,141 @@ const CajeroPedidos = () => {
         {/* Columna izquierda */}
         <div className="space-y-4 lg:col-span-1">
           {/* Tipo de servicio */}
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3">
-            <h2 className="text-lg font-semibold mb-1">Tipo de servicio</h2>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => setTipoServicio('MESA')}
-                className={
-                  'px-2 py-2 rounded-lg border text-center ' +
-                  (tipoServicio === 'MESA'
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : 'bg-slate-50 text-slate-700 border-slate-200')
-                }
-              >
-                En mesa
-              </button>
-              <button
-                type="button"
-                onClick={() => setTipoServicio('PARA_LLEVAR')}
-                className={
-                  'px-2 py-2 rounded-lg border text-center ' +
-                  (tipoServicio === 'PARA_LLEVAR'
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : 'bg-slate-50 text-slate-700 border-slate-200')
-                }
-              >
-                Para llevar
-              </button>
-              <button
-                type="button"
-                onClick={() => setTipoServicio('RECOJO')}
-                className={
-                  'px-2 py-2 rounded-lg border text-center ' +
-                  (tipoServicio === 'RECOJO'
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : 'bg-slate-50 text-slate-700 border-slate-200')
-                }
-              >
-                Para recoger
-              </button>
-              <button
-                type="button"
-                onClick={() => setTipoServicio('DOMICILIO')}
-                className={
-                  'px-2 py-2 rounded-lg border text-center ' +
-                  (tipoServicio === 'DOMICILIO'
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : 'bg-slate-50 text-slate-700 border-slate-200')
-                }
-              >
-                Domicilio
-              </button>
-            </div>
-          </div>
+          <Card className="border-border/60">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Tipo de servicio</CardTitle>
+              <CardDescription className="text-xs">
+                Define cómo se entrega el pedido.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-2">
+              {servicioBtn("MESA", "En mesa", UtensilsCrossed)}
+              {servicioBtn("PARA_LLEVAR", "Para llevar", Store)}
+              {servicioBtn("RECOJO", "Para recoger", HandCoins)}
+              {servicioBtn("DOMICILIO", "Domicilio", Truck)}
+            </CardContent>
+          </Card>
 
-          {/* Cliente (opcional) */}
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3">
-            <h2 className="text-lg font-semibold mb-1">Cliente registrado</h2>
-            <p className="text-[11px] text-slate-500">
-              Opcional. Si el cliente no quiere dar su nombre, puedes dejarlo en
-              blanco y registrar el pedido igual.
-            </p>
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Cliente (opcional)
-              </label>
-              <select
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                value={clienteSeleccionado}
-                onChange={(e) => setClienteSeleccionado(e.target.value)}
-                disabled={esContinuacion} // el pedido ya tiene cliente
-              >
-                <option value="">Sin cliente (anónimo)</option>
-                {clientes.map((c) => (
-                  <option key={c.id_cliente} value={c.id_cliente}>
-                    {c.nombre_completo}{' '}
-                    {c.telefono ? `- ${c.telefono}` : ''}
-                  </option>
-                ))}
-              </select>
-              {esContinuacion && (
-                <p className="text-[10px] text-slate-500 mt-1">
-                  El cliente del pedido no se modifica al continuar, solo se
-                  agregan platos.
-                </p>
-              )}
-            </div>
+          {/* Cliente + observaciones */}
+          <Card className="border-border/60">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Cliente (opcional)</CardTitle>
+              <CardDescription className="text-xs">
+                Puedes dejar sin cliente y registrar igual.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2">
+                <Label>Cliente registrado</Label>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Observaciones
-              </label>
-              <textarea
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                value={observaciones}
-                onChange={(e) => setObservaciones(e.target.value)}
-                placeholder="Ej. Sin cebolla, poco picante, entregar en portón café..."
-                rows={2}
-              />
-            </div>
-          </div>
+                {/* ✅ FIX: SelectItem no puede tener value="" -> usamos ANONIMO */}
+                <Select
+                  value={clienteSeleccionado || "ANONIMO"}
+                  onValueChange={(val) =>
+                    setClienteSeleccionado(val === "ANONIMO" ? "" : val)
+                  }
+                  disabled={esContinuacion}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sin cliente (anónimo)" />
+                  </SelectTrigger>
 
-          {/* Detalle rápido del pedido */}
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">Detalle</h2>
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
-                {items.length} ítem(s)
-              </span>
-            </div>
+                  <SelectContent>
+                    <SelectItem value="ANONIMO">Sin cliente (anónimo)</SelectItem>
 
-            {items.length === 0 ? (
-              <p className="text-xs text-slate-500">
-                Aún no hay platos en el pedido.
-              </p>
-            ) : (
-              <>
-                <div className="overflow-x-auto max-h-52">
-                  <table className="min-w-full text-xs border border-slate-200">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="px-2 py-2 border text-left">Plato</th>
-                        <th className="px-2 py-2 border text-center">Cant.</th>
-                        <th className="px-2 py-2 border text-right">Subt.</th>
-                        <th className="px-2 py-2 border text-center">Acción</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((it) => (
-                        <tr key={it.id_plato} className="hover:bg-slate-50">
-                          <td className="px-2 py-2 border align-middle">
-                            <span className="block font-medium text-[13px]">
-                              {it.nombre}
-                            </span>
-                            {typeof it.stock_actual !== 'undefined' && (
-                              <span className="block text-[10px] text-slate-500">
-                                Stock disp.: {it.stock_actual}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-2 py-2 border text-center align-middle">
-                            <input
+                    {clientes.map((c) => (
+                      <SelectItem
+                        key={c.id_cliente}
+                        value={String(c.id_cliente)}
+                      >
+                        {c.nombre_completo} {c.telefono ? `- ${c.telefono}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {esContinuacion && (
+                  <p className="text-[11px] text-muted-foreground">
+                    El cliente no se modifica al continuar un pedido.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Observaciones</Label>
+                <textarea
+                  className="w-full min-h-[64px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm 
+                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={observaciones}
+                  onChange={(e) => setObservaciones(e.target.value)}
+                  placeholder="Ej. sin cebolla, poco picante..."
+                  rows={3}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Detalle pedido */}
+          <Card className="border-border/60">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Detalle del pedido</CardTitle>
+                <CardDescription className="text-xs">
+                  {items.length} ítem(s)
+                </CardDescription>
+              </div>
+              <Badge variant="outline">
+                Bs. {total.toFixed(2)}
+              </Badge>
+            </CardHeader>
+
+            <CardContent className="space-y-3">
+              {items.length === 0 ? (
+                <div className="text-sm text-muted-foreground py-6 text-center">
+                  Aún no hay platos en el pedido.
+                </div>
+              ) : (
+                <>
+                  {/* Mobile list */}
+                  <div className="space-y-2 md:hidden">
+                    {items.map((it) => (
+                      <div
+                        key={it.id_plato}
+                        className="rounded-lg border bg-card p-3 flex items-start justify-between gap-2"
+                      >
+                        <div>
+                          <p className="font-semibold text-sm">{it.nombre}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Bs. {it.precio.toFixed(2)} c/u
+                          </p>
+                          {typeof it.stock_actual !== "undefined" && (
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              Stock: {it.stock_actual}
+                            </p>
+                          )}
+                          <p className="text-xs font-medium mt-1">
+                            Subtotal: Bs. {(it.precio * it.cantidad).toFixed(2)}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() =>
+                                handleCambiarCantidadItem(
+                                  it.id_plato,
+                                  it.cantidad - 1
+                                )
+                              }
+                            >
+                              <Minus className="size-3" />
+                            </Button>
+                            <Input
                               type="number"
                               min="1"
-                              className="w-14 border rounded px-1 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                              className="w-14 h-9 text-center"
                               value={it.cantidad}
                               onChange={(e) =>
                                 handleCambiarCantidadItem(
@@ -540,407 +600,499 @@ const CajeroPedidos = () => {
                                 )
                               }
                             />
-                          </td>
-                          <td className="px-2 py-2 border text-right align-middle">
-                            Bs. {(it.precio * it.cantidad).toFixed(2)}
-                          </td>
-                          <td className="px-2 py-2 border text-center align-middle">
-                            <button
-                              onClick={() => handleQuitarItem(it.id_plato)}
-                              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-red-600 text-white hover:bg-red-700"
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() =>
+                                handleCambiarCantidadItem(
+                                  it.id_plato,
+                                  it.cantidad + 1
+                                )
+                              }
                             >
-                              ✖
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      <tr className="bg-slate-50 font-semibold">
-                        <td
-                          className="px-2 py-2 border text-right text-[13px]"
-                          colSpan={2}
-                        >
-                          Total
-                        </td>
-                        <td className="px-2 py-2 border text-right text-[13px]">
-                          Bs. {total.toFixed(2)}
-                        </td>
-                        <td className="px-2 py-2 border" />
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
+                              <Plus className="size-3" />
+                            </Button>
+                          </div>
 
-            <div className="mt-3 pt-3 border-t border-slate-100">
-              <button
+                          <Button
+                            size="icon"
+                            variant="destructive"
+                            onClick={() => handleQuitarItem(it.id_plato)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop table */}
+                  <div className="hidden md:block rounded-lg border overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-muted/40">
+                        <TableRow>
+                          <TableHead>Plato</TableHead>
+                          <TableHead className="w-[120px] text-center">
+                            Cant.
+                          </TableHead>
+                          <TableHead className="text-right w-[120px]">
+                            Subt.
+                          </TableHead>
+                          <TableHead className="text-right w-[90px]">
+                            Acción
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {items.map((it) => (
+                          <TableRow key={it.id_plato}>
+                            <TableCell>
+                              <div className="space-y-0.5">
+                                <p className="font-medium">{it.nombre}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Bs. {it.precio.toFixed(2)} c/u
+                                </p>
+                                {typeof it.stock_actual !== "undefined" && (
+                                  <p className="text-[10px] text-muted-foreground">
+                                    Stock disp.: {it.stock_actual}
+                                  </p>
+                                )}
+                              </div>
+                            </TableCell>
+
+                            <TableCell className="text-center">
+                              <div className="inline-flex items-center gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  onClick={() =>
+                                    handleCambiarCantidadItem(
+                                      it.id_plato,
+                                      it.cantidad - 1
+                                    )
+                                  }
+                                >
+                                  <Minus className="size-3" />
+                                </Button>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  className="w-16 h-9 text-center"
+                                  value={it.cantidad}
+                                  onChange={(e) =>
+                                    handleCambiarCantidadItem(
+                                      it.id_plato,
+                                      e.target.value
+                                    )
+                                  }
+                                />
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  onClick={() =>
+                                    handleCambiarCantidadItem(
+                                      it.id_plato,
+                                      it.cantidad + 1
+                                    )
+                                  }
+                                >
+                                  <Plus className="size-3" />
+                                </Button>
+                              </div>
+                            </TableCell>
+
+                            <TableCell className="text-right font-medium">
+                              Bs. {(it.precio * it.cantidad).toFixed(2)}
+                            </TableCell>
+
+                            <TableCell className="text-right">
+                              <Button
+                                size="icon"
+                                variant="destructive"
+                                onClick={() => handleQuitarItem(it.id_plato)}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+
+                        <TableRow className="bg-muted/30">
+                          <TableCell colSpan={2} className="text-right font-semibold">
+                            Total
+                          </TableCell>
+                          <TableCell className="text-right font-bold">
+                            Bs. {total.toFixed(2)}
+                          </TableCell>
+                          <TableCell />
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              )}
+
+              <Separator />
+
+              <Button
                 type="button"
-                disabled={enviando || items.length === 0}
                 onClick={handleAbrirModalPago}
-                className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                disabled={enviando || items.length === 0}
+                className="w-full gap-2"
               >
                 {enviando
                   ? esContinuacion
-                    ? 'Actualizando pedido...'
-                    : 'Procesando...'
+                    ? "Actualizando pedido..."
+                    : "Procesando..."
                   : esContinuacion
-                  ? 'Agregar al pedido pendiente'
-                  : 'Confirmar pedido'}
-              </button>
-              <p className="mt-1 text-[11px] text-slate-500 text-center">
-                Primero revisa el resumen antes de registrar.
+                  ? "Agregar al pedido pendiente"
+                  : "Confirmar pedido"}
+              </Button>
+
+              <p className="text-[11px] text-muted-foreground text-center">
+                Revisa el detalle antes de registrar.
               </p>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Columna derecha: catálogo de platos */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 lg:col-span-2 flex flex-col">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-3">
-            <div>
-              <h2 className="text-lg font-semibold">Catálogo de platos</h2>
-              <p className="text-[11px] text-slate-500">
-                Haz clic en un plato para agregar 1 unidad al pedido.
-              </p>
-            </div>
+        {/* Catálogo */}
+        <Card className="border-border/60 lg:col-span-2">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">Catálogo de platos</CardTitle>
+                <CardDescription className="text-xs">
+                  Toca un plato para agregar 1 unidad al pedido.
+                </CardDescription>
+              </div>
 
-            <div className="flex flex-col md:flex-row gap-2 md:items-center">
-              <input
-                type="text"
-                placeholder="Buscar por nombre o tipo..."
-                className="w-full md:w-64 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-              />
-              <select
-                className="w-full md:w-40 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                value={tipoFiltro}
-                onChange={(e) => setTipoFiltro(e.target.value)}
-              >
-                {tiposPlato.map((t) => (
-                  <option key={t} value={t}>
-                    {t === 'TODOS' ? 'Todos los tipos' : t}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+              <div className="flex flex-col md:flex-row gap-2 md:items-center">
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nombre o tipo..."
+                    className="pl-9 md:w-64"
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                  />
+                </div>
 
-          {platosFiltrados.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center">
-              <p className="text-sm text-slate-500">
+                <Select value={tipoFiltro} onValueChange={setTipoFiltro}>
+                  <SelectTrigger className="md:w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tiposPlato.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t === "TODOS" ? "Todos los tipos" : t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent>
+            {platosFiltrados.length === 0 ? (
+              <div className="py-16 text-center text-sm text-muted-foreground">
                 No se encontraron platos con ese filtro.
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-              {platosFiltrados.map((p) => {
-                const imgUrl = p.imagen_url || p.imagen || null;
-                return (
-                  <button
-                    key={p.id_plato}
-                    type="button"
-                    onClick={() => handleAgregarDesdeCatalogo(p)}
-                    className="group text-left bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-400 rounded-xl overflow-hidden shadow-sm transition-all flex flex-col"
-                  >
-                    <div className="relative h-24 w-full bg-slate-200 overflow-hidden">
-                      {imgUrl ? (
-                        <img
-                          src={imgUrl}
-                          alt={p.nombre}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[11px] text-slate-500">
-                          Sin imagen
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-2 flex-1 flex flex-col justify-between">
-                      <div>
-                        <p className="text-xs uppercase text-slate-500">
-                          {p.tipo_plato || 'Plato'}
-                        </p>
-                        <p className="text-sm font-semibold line-clamp-2">
-                          {p.nombre}
-                        </p>
-                      </div>
-                      <div className="mt-1 flex items-center justify-between">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-semibold text-emerald-700">
-                            Bs. {Number(p.precio).toFixed(2)}
+              </div>
+            ) : (
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+                {platosFiltrados.map((p) => {
+                  const imgUrl = p.imagen_url || p.imagen || null;
+                  const sinStock = (p.stock_actual ?? 0) <= 0;
+
+                  return (
+                    <button
+                      key={p.id_plato}
+                      type="button"
+                      onClick={() => handleAgregarDesdeCatalogo(p)}
+                      disabled={sinStock}
+                      className={[
+                        "group text-left rounded-xl border bg-card overflow-hidden shadow-sm transition-all flex flex-col",
+                        "hover:border-primary/60 hover:shadow-md",
+                        sinStock ? "opacity-60 cursor-not-allowed" : "",
+                      ].join(" ")}
+                    >
+                      <div className="relative h-24 w-full bg-muted overflow-hidden">
+                        {imgUrl ? (
+                          <img
+                            src={imgUrl}
+                            alt={p.nombre}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                        ) : (
+                          <div className="w-full h-full grid place-items-center text-[11px] text-muted-foreground">
+                            Sin imagen
+                          </div>
+                        )}
+
+                        {sinStock && (
+                          <span className="absolute inset-0 grid place-items-center bg-black/40 text-white text-xs font-semibold">
+                            Sin stock
                           </span>
-                          <span className="text-[10px] text-slate-500">
-                            Stock: {p.stock_actual ?? 0}
-                          </span>
-                        </div>
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-emerald-200 text-emerald-700">
-                          + Agregar
-                        </span>
+                        )}
                       </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+
+                      <div className="p-2 flex-1 flex flex-col justify-between">
+                        <div>
+                          <p className="text-[10px] uppercase text-muted-foreground">
+                            {p.tipo_plato || "Plato"}
+                          </p>
+                          <p className="text-sm font-semibold line-clamp-2">
+                            {p.nombre}
+                          </p>
+                        </div>
+
+                        <div className="mt-1 flex items-center justify-between">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-primary">
+                              Bs. {Number(p.precio).toFixed(2)}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              Stock: {p.stock_actual ?? 0}
+                            </span>
+                          </div>
+
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] gap-1"
+                          >
+                            <Plus className="size-3" />
+                            Agregar
+                          </Badge>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* MODAL PAGO + TICKET */}
-      {pagoModalAbierto && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-lg max-w-xl w-full p-4 md:p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">
-                {esContinuacion
-                  ? `Agregar al pedido #${pedidoExistenteId}`
-                  : 'Pago y ticket'}
-              </h2>
-              <button
-                className="text-sm text-slate-500 hover:text-slate-700"
-                type="button"
-                onClick={() => {
-                  if (!enviando) {
-                    setPagoModalAbierto(false);
-                    if (!esContinuacion) {
-                      setMontoRecibido('');
-                      setMetodoPagoModal('EFECTIVO');
-                    }
-                  }
-                }}
-              >
-                ✖
-              </button>
-            </div>
+      {/* MODAL PAGO + TICKET (shadcn Dialog) */}
+      <Dialog open={pagoModalAbierto} onOpenChange={setPagoModalAbierto}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>
+              {esContinuacion
+                ? `Agregar al pedido #${pedidoExistenteId}`
+                : "Pago y ticket"}
+            </DialogTitle>
+            <DialogDescription>
+              {esContinuacion
+                ? "Solo se sumarán estos platos al pedido. No se cobra aquí."
+                : "Selecciona método de pago y confirma el pedido."}
+            </DialogDescription>
+          </DialogHeader>
 
-            {/* Sección de pago */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <p className="text-sm font-medium">
-                  {esContinuacion ? 'Nuevo subtotal a agregar' : 'Total a pagar'}
-                </p>
-                <p className="text-xl font-bold text-emerald-700">
-                  Bs. {total.toFixed(2)}
-                </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Pago */}
+            <Card className="border-border/60">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">
+                  {esContinuacion ? "Subtotal a agregar" : "Total a pagar"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="rounded-lg border bg-muted/30 px-3 py-2 flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Total</span>
+                  <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
+                    Bs. {total.toFixed(2)}
+                  </span>
+                </div>
 
                 {!esContinuacion && (
-                  <>
-                    <div className="mt-2">
-                      <p className="text-xs font-medium mb-1">
-                        Método de pago
-                      </p>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => setMetodoPagoModal('EFECTIVO')}
-                          className={
-                            'px-2 py-2 rounded-lg border text-center ' +
-                            (metodoPagoModal === 'EFECTIVO'
-                              ? 'bg-emerald-600 text-white border-emerald-600'
-                              : 'bg-slate-50 text-slate-700 border-slate-200')
-                          }
-                        >
-                          Efectivo
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setMetodoPagoModal('QR')}
-                          className={
-                            'px-2 py-2 rounded-lg border text-center ' +
-                            (metodoPagoModal === 'QR'
-                              ? 'bg-emerald-600 text-white border-emerald-600'
-                              : 'bg-slate-50 text-slate-700 border-slate-200')
-                          }
-                        >
-                          QR
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setMetodoPagoModal('PENDIENTE')}
-                          className={
-                            'px-2 py-2 rounded-lg border text-center ' +
-                            (metodoPagoModal === 'PENDIENTE'
-                              ? 'bg-yellow-500 text-white border-yellow-500'
-                              : 'bg-slate-50 text-slate-700 border-slate-200')
-                          }
-                        >
-                          Pendiente
-                        </button>
-                      </div>
+                  <div className="space-y-2">
+                    <Label>Método de pago</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {pagoBtn("EFECTIVO", "Efectivo", CreditCard)}
+                      {pagoBtn("QR", "QR", QrCode)}
+                      {pagoBtn("PENDIENTE", "Pendiente", Clock3, "secondary")}
                     </div>
+                  </div>
+                )}
 
-                    {metodoPagoModal === 'EFECTIVO' && (
-                      <div className="mt-2 space-y-1">
-                        <label className="block text-xs font-medium">
-                          Monto recibido (Bs.)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          value={montoRecibido}
-                          onChange={(e) => setMontoRecibido(e.target.value)}
-                          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                        />
-                        <p className="text-xs text-slate-600">
-                          Cambio:{' '}
-                          <span className="font-semibold">
-                            Bs. {cambio.toFixed(2)}
-                          </span>
-                        </p>
-                      </div>
-                    )}
-                  </>
+                {!esContinuacion && metodoPagoModal === "EFECTIVO" && (
+                  <div className="grid gap-2">
+                    <Label>Monto recibido (Bs.)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={montoRecibido}
+                      onChange={(e) => setMontoRecibido(e.target.value)}
+                      placeholder="Ej. 100"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Cambio:{" "}
+                      <span className="font-semibold text-foreground">
+                        Bs. {cambio.toFixed(2)}
+                      </span>
+                    </p>
+                  </div>
                 )}
 
                 {esContinuacion && (
-                  <p className="mt-2 text-[11px] text-slate-600">
-                    Este pedido seguirá marcado como{' '}
-                    <span className="font-semibold">PENDIENTE</span>. Solo se
-                    sumará el monto de estos platos al total existente.
-                  </p>
+                  <Alert>
+                    <AlertTitle>Pedido pendiente</AlertTitle>
+                    <AlertDescription className="text-xs">
+                      Este pedido seguirá en estado <b>PENDIENTE</b>. Solo se añade el subtotal.
+                    </AlertDescription>
+                  </Alert>
                 )}
-              </div>
+              </CardContent>
+            </Card>
 
-              {/* Ticket preview */}
-              <div className="border rounded-lg p-3 bg-slate-50 text-xs font-mono max-h-64 overflow-y-auto">
-                <div className="text-center mb-2">
-                  <p className="font-bold text-sm">CabreraGriller</p>
-                  <p>{new Date().toLocaleString()}</p>
-                </div>
+            {/* Ticket preview */}
+            <Card className="border-border/60">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Vista previa ticket</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-72 rounded-lg border bg-muted/30 p-3 text-xs font-mono">
+                  <div className="text-center mb-2">
+                    <p className="font-bold text-sm">CabreraGriller</p>
+                    <p>{new Date().toLocaleString()}</p>
+                  </div>
 
-                {/* Cliente solo si NO es anónimo */}
-                {clienteObj && !esContinuacion && (
+                  {clienteObj && !esContinuacion && (
+                    <p>
+                      Cliente:{" "}
+                      <span className="font-semibold">
+                        {clienteObj.nombre_completo}
+                      </span>
+                    </p>
+                  )}
+
                   <p>
-                    Cliente:{' '}
+                    Servicio:{" "}
                     <span className="font-semibold">
-                      {clienteObj.nombre_completo}
+                      {tipoServicio === "MESA"
+                        ? "En mesa"
+                        : tipoServicio === "PARA_LLEVAR"
+                        ? "Para llevar"
+                        : tipoServicio === "RECOJO"
+                        ? "Para recoger"
+                        : "Domicilio"}
                     </span>
                   </p>
-                )}
 
-                <p>
-                  Servicio:{' '}
-                  <span className="font-semibold">
-                    {tipoServicio === 'MESA'
-                      ? 'En mesa'
-                      : tipoServicio === 'PARA_LLEVAR'
-                      ? 'Para llevar'
-                      : tipoServicio === 'RECOJO'
-                      ? 'Para recoger'
-                      : 'Domicilio'}
-                  </span>
-                </p>
-                <p>
-                  Pago:{' '}
-                  <span className="font-semibold">
-                    {esContinuacion
-                      ? 'PENDIENTE / NO PAGADO'
-                      : metodoPagoModal === 'EFECTIVO'
-                      ? 'Efectivo'
-                      : metodoPagoModal === 'QR'
-                      ? 'QR'
-                      : 'PENDIENTE / NO PAGADO'}
-                  </span>
-                </p>
+                  <p>
+                    Pago:{" "}
+                    <span className="font-semibold">
+                      {esContinuacion
+                        ? "PENDIENTE / NO PAGADO"
+                        : metodoPagoModal === "EFECTIVO"
+                        ? "Efectivo"
+                        : metodoPagoModal === "QR"
+                        ? "QR"
+                        : "PENDIENTE / NO PAGADO"}
+                    </span>
+                  </p>
 
-                {/* Efectivo: mostramos Recibido/Cambio solo si monto > 0 y no es continuación */}
-                {!esContinuacion &&
-                  metodoPagoModal === 'EFECTIVO' &&
-                  Number(montoRecibido || 0) > 0 && (
-                    <>
-                      <p>
-                        Recibido:{' '}
-                        <span className="font-semibold">
-                          Bs. {Number(montoRecibido).toFixed(2)}
-                        </span>
-                      </p>
-
-                      {cambio > 0 && (
+                  {!esContinuacion &&
+                    metodoPagoModal === "EFECTIVO" &&
+                    Number(montoRecibido || 0) > 0 && (
+                      <>
                         <p>
-                          Cambio:{' '}
+                          Recibido:{" "}
                           <span className="font-semibold">
-                            Bs. {cambio.toFixed(2)}
+                            Bs. {Number(montoRecibido).toFixed(2)}
                           </span>
                         </p>
-                      )}
+                        {cambio > 0 && (
+                          <p>
+                            Cambio:{" "}
+                            <span className="font-semibold">
+                              Bs. {cambio.toFixed(2)}
+                            </span>
+                          </p>
+                        )}
+                      </>
+                    )}
+
+                  <hr className="my-2 border-border" />
+                  <p className="font-semibold mb-1">
+                    {esContinuacion ? "Nuevos platos:" : "Detalle:"}
+                  </p>
+
+                  {items.map((it) => (
+                    <p key={it.id_plato}>
+                      {it.cantidad} x {it.nombre} @ Bs. {it.precio.toFixed(2)} ={" "}
+                      Bs. {(it.precio * it.cantidad).toFixed(2)}
+                    </p>
+                  ))}
+
+                  <hr className="my-2 border-border" />
+                  <p>
+                    {esContinuacion ? "SUBTOTAL A AGREGAR:" : "TOTAL:"}{" "}
+                    <span className="font-bold">
+                      Bs. {total.toFixed(2)}
+                    </span>
+                  </p>
+
+                  {!esContinuacion && metodoPagoModal === "PENDIENTE" && (
+                    <p className="mt-1 text-red-600 font-bold text-center">
+                      *** PENDIENTE DE PAGO ***
+                    </p>
+                  )}
+
+                  {observaciones && (
+                    <>
+                      <hr className="my-2 border-border" />
+                      <p>Obs: {observaciones}</p>
                     </>
                   )}
 
-                <hr className="my-2 border-slate-300" />
-                <p className="font-semibold mb-1">
-                  {esContinuacion ? 'Nuevos platos:' : 'Detalle:'}
-                </p>
-                {items.map((it) => (
-                  <p key={it.id_plato}>
-                    {it.cantidad} x {it.nombre} @ Bs.{' '}
-                    {it.precio.toFixed(2)} = Bs.{' '}
-                    {(it.precio * it.cantidad).toFixed(2)}
-                  </p>
-                ))}
-                <hr className="my-2 border-slate-300" />
-                <p>
-                  {esContinuacion ? 'SUBTOTAL A AGREGAR:' : 'TOTAL:'}{' '}
-                  <span className="font-bold">
-                    Bs. {total.toFixed(2)}
-                  </span>
-                </p>
-
-                {(!esContinuacion && metodoPagoModal === 'PENDIENTE') && (
-                  <p className="mt-1 text-red-600 font-bold text-center">
-                    *** PENDIENTE DE PAGO ***
-                  </p>
-                )}
-
-                {observaciones && (
-                  <>
-                    <hr className="my-2 border-slate-300" />
-                    <p>Obs: {observaciones}</p>
-                  </>
-                )}
-                <div className="mt-2 text-center text-[10px] text-slate-500">
-                  ¡Gracias por su preferencia!
-                </div>
-              </div>
-            </div>
-
-            {/* Botones modal */}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                disabled={enviando}
-                onClick={() => {
-                  if (!enviando) {
-                    setPagoModalAbierto(false);
-                    if (!esContinuacion) {
-                      setMontoRecibido('');
-                      setMetodoPagoModal('EFECTIVO');
-                    }
-                  }
-                }}
-                className="px-4 py-2 text-xs md:text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={enviando}
-                onClick={handleConfirmarPagoYCrearPedido}
-                className="px-4 py-2 text-xs md:text-sm rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60"
-              >
-                {enviando
-                  ? esContinuacion
-                    ? 'Actualizando...'
-                    : 'Registrando...'
-                  : esContinuacion
-                  ? 'Confirmar y agregar al pedido'
-                  : 'Confirmar y registrar pedido'}
-              </button>
-            </div>
+                  <div className="mt-2 text-center text-[10px] text-muted-foreground">
+                    ¡Gracias por su preferencia!
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
           </div>
-        </div>
-      )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                if (!enviando) {
+                  setPagoModalAbierto(false);
+                  if (!esContinuacion) {
+                    setMontoRecibido("");
+                    setMetodoPagoModal("EFECTIVO");
+                  }
+                }
+              }}
+              disabled={enviando}
+            >
+              Cancelar
+            </Button>
+
+            <Button
+              type="button"
+              onClick={handleConfirmarPagoYCrearPedido}
+              disabled={enviando}
+              className="gap-2"
+            >
+              {enviando
+                ? esContinuacion
+                  ? "Actualizando..."
+                  : "Registrando..."
+                : esContinuacion
+                ? "Confirmar y agregar"
+                : "Confirmar pedido"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

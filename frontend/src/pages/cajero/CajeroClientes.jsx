@@ -1,46 +1,121 @@
 // src/pages/cajero/CajeroClientes.jsx
-import { useEffect, useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
-import { useSocket } from '../../hooks/useSocket';
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { useSocket } from "../../hooks/useSocket";
 import {
   obtenerClientes,
   crearCliente,
   actualizarCliente,
   eliminarCliente,
-} from '../../services/clienteService';
+} from "../../services/clienteService";
+
+// shadcn/ui
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+
+// Dialog
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
+// Table
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+// AlertDialog
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+// icons
+import {
+  UserPlus,
+  Pencil,
+  Trash2,
+  Search,
+  Users,
+  Phone,
+  MapPin,
+  RefreshCw,
+} from "lucide-react";
 
 const CajeroClientes = () => {
   const { token } = useAuth();
+
   const [clientes, setClientes] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+
+  // modal form
+  const [formOpen, setFormOpen] = useState(false);
 
   const [modoEdicion, setModoEdicion] = useState(false);
   const [clienteEditando, setClienteEditando] = useState(null);
 
   const [form, setForm] = useState({
-    nombre_completo: '',
-    telefono: '',
-    direccion: '',
+    nombre_completo: "",
+    telefono: "",
+    direccion: "",
   });
 
+  // búsqueda
+  const [q, setQ] = useState("");
+
+  // confirm delete
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [clienteAEliminar, setClienteAEliminar] = useState(null);
+
+  // refrescando manual
+  const [refrescando, setRefrescando] = useState(false);
+
   const resetForm = () => {
-    setForm({ nombre_completo: '', telefono: '', direccion: '' });
+    setForm({ nombre_completo: "", telefono: "", direccion: "" });
     setModoEdicion(false);
     setClienteEditando(null);
+    setError("");
   };
 
-  const cargarClientes = async () => {
+  const cargarClientes = async (opts = { silent: false }) => {
     try {
-      setCargando(true);
-      setError('');
+      if (!opts.silent) setCargando(true);
+      setError("");
       const data = await obtenerClientes(token);
-      setClientes(data);
+      setClientes(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
-      setError('No se pudieron obtener los clientes');
+      setError("No se pudieron obtener los clientes");
     } finally {
-      setCargando(false);
+      if (!opts.silent) setCargando(false);
     }
   };
 
@@ -51,11 +126,11 @@ const CajeroClientes = () => {
 
   // ✅ SOCKET: clientes en vivo
   useSocket(token, {
-    'cliente:nuevo': () => cargarClientes(),
-    'cliente:actualizado': () => cargarClientes(),
-    'cliente:eliminado': () => cargarClientes(),
-    'admin:refresh': (p) => {
-      if (p?.tipo === 'clientes') cargarClientes();
+    "cliente:nuevo": () => cargarClientes({ silent: true }),
+    "cliente:actualizado": () => cargarClientes({ silent: true }),
+    "cliente:eliminado": () => cargarClientes({ silent: true }),
+    "admin:refresh": (p) => {
+      if (p?.tipo === "clientes") cargarClientes({ silent: true });
     },
   });
 
@@ -64,175 +139,428 @@ const CajeroClientes = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!form.nombre_completo.trim()) {
-      setError('El nombre completo es obligatorio');
-      return;
-    }
-
-    try {
-      setError('');
-      if (modoEdicion && clienteEditando) {
-        await actualizarCliente(clienteEditando.id_cliente, form, token);
-      } else {
-        await crearCliente(form, token);
-      }
-      await cargarClientes();
-      resetForm();
-    } catch (err) {
-      console.error(err);
-      setError('Ocurrió un error al guardar el cliente');
-    }
+  const openNuevo = () => {
+    resetForm();
+    setFormOpen(true);
   };
 
   const handleEditar = (cliente) => {
     setModoEdicion(true);
     setClienteEditando(cliente);
     setForm({
-      nombre_completo: cliente.nombre_completo || '',
-      telefono: cliente.telefono || '',
-      direccion: cliente.direccion || '',
+      nombre_completo: cliente?.nombre_completo || "",
+      telefono: cliente?.telefono || "",
+      direccion: cliente?.direccion || "",
     });
+    setFormOpen(true);
   };
 
-  const handleEliminar = async (id) => {
-    const confirmar = window.confirm('¿Seguro que deseas eliminar este cliente?');
-    if (!confirmar) return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!form.nombre_completo.trim()) {
+      setError("El nombre completo es obligatorio");
+      return;
+    }
 
     try {
-      setError('');
-      await eliminarCliente(id, token);
-      await cargarClientes();
+      setError("");
+      if (modoEdicion && clienteEditando) {
+        await actualizarCliente(clienteEditando.id_cliente, form, token);
+      } else {
+        await crearCliente(form, token);
+      }
+      resetForm();
+      setFormOpen(false);
+      cargarClientes({ silent: true });
     } catch (err) {
       console.error(err);
-      setError('No se pudo eliminar el cliente');
+      setError("Ocurrió un error al guardar el cliente");
     }
   };
 
+  const pedirEliminar = (cliente) => {
+    setClienteAEliminar(cliente);
+    setConfirmOpen(true);
+  };
+
+  const confirmarEliminar = async () => {
+    if (!clienteAEliminar) return;
+    try {
+      setError("");
+      await eliminarCliente(clienteAEliminar.id_cliente, token);
+      cargarClientes({ silent: true });
+    } catch (err) {
+      console.error(err);
+      setError("No se pudo eliminar el cliente");
+    } finally {
+      setConfirmOpen(false);
+      setClienteAEliminar(null);
+    }
+  };
+
+  const onRefresh = async () => {
+    try {
+      setRefrescando(true);
+      await cargarClientes({ silent: true });
+    } finally {
+      setRefrescando(false);
+    }
+  };
+
+  // lista filtrada
+  const clientesFiltrados = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return clientes;
+
+    return clientes.filter(
+      (c) =>
+        (c?.nombre_completo || "").toLowerCase().includes(term) ||
+        (c?.telefono || "").toLowerCase().includes(term) ||
+        (c?.direccion || "").toLowerCase().includes(term)
+    );
+  }, [clientes, q]);
+
+  // KPIs rápidos
+  const kpis = useMemo(() => {
+    const total = clientes.length;
+    const conTelefono = clientes.filter((c) => (c?.telefono || "").trim()).length;
+    const conDireccion = clientes.filter((c) => (c?.direccion || "").trim()).length;
+    return { total, conTelefono, conDireccion };
+  }, [clientes]);
+
   return (
-    <div className="p-0 md:p-0">
-      <h1 className="text-2xl font-bold mb-4">Clientes</h1>
+    <div className="w-full p-3 sm:p-4 md:p-6 space-y-5 md:space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Users className="size-5 sm:size-6 text-primary" />
+            Clientes
+          </h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Gestiona clientes rápidamente desde caja.
+          </p>
+        </div>
 
-      {/* Formulario */}
-      <div className="bg-white shadow rounded-lg p-4 mb-6">
-        <h2 className="text-lg font-semibold mb-3">
-          {modoEdicion ? 'Editar cliente' : 'Registrar nuevo cliente'}
-        </h2>
-
-        {error && (
-          <div className="mb-3 text-sm text-red-600">{error}</div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Nombre completo <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              name="nombre_completo"
-              value={form.nombre_completo}
-              onChange={handleChange}
-              className="w-full border rounded px-3 py-2 text-sm"
-              placeholder="Ej. Juan Pérez"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Teléfono</label>
-            <input
-              type="text"
-              name="telefono"
-              value={form.telefono}
-              onChange={handleChange}
-              className="w-full border rounded px-3 py-2 text-sm"
-              placeholder="Ej. 77777777"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Dirección</label>
-            <input
-              type="text"
-              name="direccion"
-              value={form.direccion}
-              onChange={handleChange}
-              className="w-full border rounded px-3 py-2 text-sm"
-              placeholder="Ej. Zona Central"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm font-semibold rounded bg-blue-600 text-white hover:bg-blue-700"
-            >
-              {modoEdicion ? 'Actualizar' : 'Guardar'}
-            </button>
-
-            {modoEdicion && (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="px-4 py-2 text-sm font-semibold rounded border border-gray-300 hover:bg-gray-100"
-              >
-                Cancelar
-              </button>
-            )}
-          </div>
-        </form>
+        <div className="flex gap-2 w-full md:w-auto">
+          <Button
+            variant="outline"
+            onClick={onRefresh}
+            className="gap-2 flex-1 md:flex-none"
+            disabled={refrescando}
+          >
+            <RefreshCw className={`size-4 ${refrescando ? "animate-spin" : ""}`} />
+            Actualizar
+          </Button>
+          <Button onClick={openNuevo} className="gap-2 flex-1 md:flex-none">
+            <UserPlus className="size-4" />
+            Nuevo
+          </Button>
+        </div>
       </div>
 
-      {/* Tabla */}
-      <div className="bg-white shadow rounded-lg p-4">
-        <h2 className="text-lg font-semibold mb-3">Listado de clientes</h2>
+      {/* Error global */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-        {cargando ? (
-          <p className="text-sm text-gray-600">Cargando clientes...</p>
-        ) : clientes.length === 0 ? (
-          <p className="text-sm text-gray-600">No hay clientes registrados.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm border">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-3 py-2 border">ID</th>
-                  <th className="px-3 py-2 border">Nombre completo</th>
-                  <th className="px-3 py-2 border">Teléfono</th>
-                  <th className="px-3 py-2 border">Dirección</th>
-                  <th className="px-3 py-2 border">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clientes.map((c) => (
-                  <tr key={c.id_cliente} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 border text-center">{c.id_cliente}</td>
-                    <td className="px-3 py-2 border">{c.nombre_completo}</td>
-                    <td className="px-3 py-2 border">{c.telefono || '-'}</td>
-                    <td className="px-3 py-2 border">{c.direccion || '-'}</td>
-                    <td className="px-3 py-2 border text-center space-x-2">
-                      <button
-                        onClick={() => handleEditar(c)}
-                        className="px-2 py-1 text-xs rounded bg-yellow-400 hover:bg-yellow-500"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => handleEliminar(c.id_cliente)}
-                        className="px-2 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700"
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
+      {/* KPIs */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card className="border-border/60">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="size-10 rounded-lg bg-primary/10 grid place-items-center">
+              <Users className="size-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total clientes</p>
+              <p className="text-xl font-bold">{kpis.total}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/60">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="size-10 rounded-lg bg-secondary/10 grid place-items-center">
+              <Phone className="size-5 text-secondary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Con teléfono</p>
+              <p className="text-xl font-bold">{kpis.conTelefono}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/60">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="size-10 rounded-lg bg-accent grid place-items-center">
+              <MapPin className="size-5 text-foreground/70" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Con dirección</p>
+              <p className="text-xl font-bold">{kpis.conDireccion}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Toolbar búsqueda */}
+      <Card className="border-border/60">
+        <CardContent className="pt-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nombre, teléfono o dirección..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Lista */}
+      <Card className="border-border/60">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Listado</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              {clientesFiltrados.length} de {clientes.length} cliente(s)
+            </CardDescription>
+          </div>
+          {cargando && (
+            <span className="text-xs sm:text-sm text-muted-foreground">
+              Cargando...
+            </span>
+          )}
+        </CardHeader>
+
+        <CardContent>
+          {cargando ? (
+            <div className="space-y-2">
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ) : clientesFiltrados.length === 0 ? (
+            <div className="py-10 text-center text-muted-foreground text-sm">
+              No hay clientes registrados.
+            </div>
+          ) : (
+            <>
+              {/* ✅ Mobile cards */}
+              <div className="grid gap-3 md:hidden">
+                {clientesFiltrados.map((c) => (
+                  <Card key={c.id_cliente} className="border-border/60">
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-0.5">
+                          <p className="font-semibold leading-tight">
+                            {c.nombre_completo}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="text-[10px]">
+                              ID #{c.id_cliente}
+                            </Badge>
+                            {c.telefono && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {c.telefono}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div className="text-xs sm:text-sm space-y-1">
+                        <p>
+                          <span className="text-muted-foreground">Teléfono: </span>
+                          {c.telefono || "-"}
+                        </p>
+                        <p className="line-clamp-2">
+                          <span className="text-muted-foreground">Dirección: </span>
+                          {c.direccion || "-"}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditar(c)}
+                          className="gap-1 w-full"
+                        >
+                          <Pencil className="size-4" />
+                          Editar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => pedirEliminar(c)}
+                          className="gap-1 w-full"
+                        >
+                          <Trash2 className="size-4" />
+                          Eliminar
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              </div>
+
+              {/* ✅ Desktop table */}
+              <div className="hidden md:block rounded-lg border overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-muted/40">
+                    <TableRow>
+                      <TableHead className="w-[70px]">ID</TableHead>
+                      <TableHead>Nombre completo</TableHead>
+                      <TableHead>Teléfono</TableHead>
+                      <TableHead>Dirección</TableHead>
+                      <TableHead className="text-right pr-3">
+                        Acciones
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+
+                  <TableBody>
+                    {clientesFiltrados.map((c) => (
+                      <TableRow key={c.id_cliente} className="hover:bg-accent/40">
+                        <TableCell className="font-medium">
+                          #{c.id_cliente}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {c.nombre_completo}
+                        </TableCell>
+                        <TableCell>{c.telefono || "-"}</TableCell>
+                        <TableCell className="max-w-[380px] truncate">
+                          {c.direccion || "-"}
+                        </TableCell>
+                        <TableCell className="text-right pr-3">
+                          <div className="inline-flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEditar(c)}
+                              className="gap-1"
+                            >
+                              <Pencil className="size-4" />
+                              Editar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => pedirEliminar(c)}
+                              className="gap-1"
+                            >
+                              <Trash2 className="size-4" />
+                              Eliminar
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* MODAL FORM */}
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {modoEdicion ? "Editar cliente" : "Registrar nuevo cliente"}
+            </DialogTitle>
+            <DialogDescription>
+              Completa los datos del cliente. El nombre es obligatorio.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="nombre_completo">
+                Nombre completo <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="nombre_completo"
+                name="nombre_completo"
+                value={form.nombre_completo}
+                onChange={handleChange}
+                placeholder="Ej. Juan Pérez"
+                autoFocus
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="telefono">Teléfono</Label>
+              <Input
+                id="telefono"
+                name="telefono"
+                value={form.telefono}
+                onChange={handleChange}
+                placeholder="Ej. 77777777"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="direccion">Dirección</Label>
+              <Input
+                id="direccion"
+                name="direccion"
+                value={form.direccion}
+                onChange={handleChange}
+                placeholder="Ej. Zona Central"
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <div className="flex items-center gap-2">
+                <Button type="submit">
+                  {modoEdicion ? "Actualizar" : "Guardar"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    resetForm();
+                    setFormOpen(false);
+                  }}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* CONFIRM DELETE */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar cliente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {clienteAEliminar
+                ? `Se eliminará a "${clienteAEliminar.nombre_completo}". Esta acción no se puede deshacer.`
+                : "Se eliminará el cliente seleccionado."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarEliminar}>
+              Sí, eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
