@@ -165,11 +165,13 @@ export default function AdminReportes() {
 
       // ✅ fetch paralelo y tolerante a fallos
       const settled = await Promise.allSettled(
-        fechas.map((f) => getResumenDia(token, f).then((data) => ({
-          fecha: f,
-          resumen: data.resumen || {},
-          platos: data.platos || [],
-        })))
+        fechas.map((f) =>
+          getResumenDia(token, f).then((data) => ({
+            fecha: f,
+            resumen: data.resumen || {},
+            platos: data.platos || [],
+          }))
+        )
       );
 
       const ok = settled
@@ -195,8 +197,12 @@ export default function AdminReportes() {
     totalPedidos,
     totalEfectivo,
     totalQr,
+    totalEgresos,
+    gananciaNeta,
     promedioVentas,
     promedioPedidos,
+    promedioEgresos,
+    promedioGananciaNeta,
   } = useMemo(() => {
     const tv = datosDiarios.reduce(
       (acc, d) => acc + Number(d.resumen.total_general || 0),
@@ -215,14 +221,34 @@ export default function AdminReportes() {
       0
     );
 
+    const teg = datosDiarios.reduce(
+      (acc, d) => acc + Number(d.resumen.total_egresos || 0),
+      0
+    );
+
+    const gn = datosDiarios.reduce((acc, d) => {
+      const ingreso = Number(d.resumen.total_general || 0);
+      const egreso = Number(d.resumen.total_egresos || 0);
+      const neto =
+        d.resumen.ganancia_neta != null
+          ? Number(d.resumen.ganancia_neta)
+          : ingreso - egreso;
+      return acc + neto;
+    }, 0);
+
     const dias = Math.max(datosDiarios.length, 1);
+
     return {
       totalVentas: tv,
       totalPedidos: tp,
       totalEfectivo: te,
       totalQr: tq,
+      totalEgresos: teg,
+      gananciaNeta: gn,
       promedioVentas: tv / dias,
       promedioPedidos: tp / dias,
+      promedioEgresos: teg / dias,
+      promedioGananciaNeta: gn / dias,
     };
   }, [datosDiarios]);
 
@@ -235,6 +261,23 @@ export default function AdminReportes() {
         efectivo: Number(d.resumen.total_efectivo || 0),
         qr: Number(d.resumen.total_qr || 0),
         total: Number(d.resumen.total_general || 0),
+      })),
+    [datosDiarios]
+  );
+
+  // ✅ Ingresos vs Egresos por día
+  const ingresosEgresosPorDia = useMemo(
+    () =>
+      datosDiarios.map((d) => ({
+        fecha: formatearFechaBonita(d.fecha),
+        ingresos: Number(d.resumen.total_general || 0),
+        egresos: Number(d.resumen.total_egresos || 0),
+        ganancia: Number(
+          d.resumen.ganancia_neta != null
+            ? d.resumen.ganancia_neta
+            : Number(d.resumen.total_general || 0) -
+              Number(d.resumen.total_egresos || 0)
+        ),
       })),
     [datosDiarios]
   );
@@ -279,9 +322,9 @@ export default function AdminReportes() {
     if (tipoRango === "semana") {
       const fechas = generarFechasRango(tipoRango, fechaBase);
       if (!fechas.length) return "";
-      return `Semana: ${formatearFechaBonita(fechas[0])} → ${formatearFechaBonita(
-        fechas[fechas.length - 1]
-      )}`;
+      return `Semana: ${formatearFechaBonita(
+        fechas[0]
+      )} → ${formatearFechaBonita(fechas[fechas.length - 1])}`;
     }
     if (tipoRango === "mes") {
       const base = new Date(fechaBase);
@@ -306,7 +349,8 @@ export default function AdminReportes() {
             Reportes
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            Analiza ventas, pedidos, pagos y platos por día, semana o mes.
+            Analiza ventas, pedidos, pagos, egresos y platos por día, semana o
+            mes.
           </p>
         </div>
 
@@ -323,7 +367,9 @@ export default function AdminReportes() {
             Hoy
           </Button>
           <Button
-            variant={tipoRango === "semana" && fechaBase === hoy ? "default" : "outline"}
+            variant={
+              tipoRango === "semana" && fechaBase === hoy ? "default" : "outline"
+            }
             onClick={() => {
               setTipoRango("semana");
               setFechaBase(hoy);
@@ -450,7 +496,7 @@ export default function AdminReportes() {
       {/* CONTENT */}
       {!loading && !sinDatos && (
         <>
-          {/* KPIs */}
+          {/* KPIs principales */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <Card className="border-border/60">
               <CardContent className="p-4">
@@ -525,6 +571,37 @@ export default function AdminReportes() {
             </Card>
           </div>
 
+          {/* KPIs financieros: egresos y ganancia neta */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-3">
+            <Card className="border-border/60">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground flex items-center gap-2">
+                  Compras / Egresos
+                </p>
+                <p className="text-2xl font-bold mt-1">
+                  {fmtCurrency(totalEgresos)}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Promedio/día: {fmtCurrency(promedioEgresos)}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/60">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground flex items-center gap-2">
+                  Ganancia neta (ingresos - egresos)
+                </p>
+                <p className="text-2xl font-bold mt-1">
+                  {fmtCurrency(gananciaNeta)}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Promedio/día: {fmtCurrency(promedioGananciaNeta)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Línea pagos por día */}
           <Card className="border-border/60">
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
@@ -577,6 +654,50 @@ export default function AdminReportes() {
             </CardContent>
           </Card>
 
+          {/* Ingresos vs Egresos por día */}
+          <Card className="border-border/60">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BarChart3 className="size-4 text-primary" />
+                  Ingresos vs Egresos por día
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
+                  Ventas de platos vs compras/egresos del rango.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {ingresosEgresosPorDia.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No hay datos suficientes para este gráfico.
+                </p>
+              ) : (
+                <div className="h-56 sm:h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={ingresosEgresosPorDia}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="fecha" />
+                      <YAxis />
+                      <Tooltip content={<TooltipDinero />} />
+                      <Legend />
+                      <Bar
+                        dataKey="ingresos"
+                        name="Ingresos (ventas)"
+                        fill="#22C55E"
+                      />
+                      <Bar
+                        dataKey="egresos"
+                        name="Egresos (compras)"
+                        fill="#EF4444"
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Barras apiladas + Pie */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             <Card className="lg:col-span-2 border-border/60">
@@ -599,8 +720,18 @@ export default function AdminReportes() {
                         <YAxis />
                         <Tooltip content={<TooltipDinero />} />
                         <Legend />
-                        <Bar dataKey="efectivo" stackId="a" fill="#22C55E" name="Efectivo" />
-                        <Bar dataKey="qr" stackId="a" fill="#6366F1" name="QR" />
+                        <Bar
+                          dataKey="efectivo"
+                          stackId="a"
+                          fill="#22C55E"
+                          name="Efectivo"
+                        />
+                        <Bar
+                          dataKey="qr"
+                          stackId="a"
+                          fill="#6366F1"
+                          name="QR"
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -717,7 +848,7 @@ export default function AdminReportes() {
                 Detalle diario del rango
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                Resumen por día (ventas y formas de pago).
+                Resumen por día (ventas, pagos y egresos).
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -731,11 +862,20 @@ export default function AdminReportes() {
                       <TableHead>Ventas</TableHead>
                       <TableHead>Efectivo</TableHead>
                       <TableHead>QR</TableHead>
+                      <TableHead>Egresos</TableHead>
+                      <TableHead>Ganancia neta</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {datosDiarios.map((d) => {
                       const r = d.resumen || {};
+                      const ingreso = Number(r.total_general || 0);
+                      const egreso = Number(r.total_egresos || 0);
+                      const neto =
+                        r.ganancia_neta != null
+                          ? Number(r.ganancia_neta)
+                          : ingreso - egreso;
+
                       return (
                         <TableRow key={d.fecha} className="hover:bg-accent/40">
                           <TableCell>{formatearFechaLarga(d.fecha)}</TableCell>
@@ -745,6 +885,8 @@ export default function AdminReportes() {
                           </TableCell>
                           <TableCell>{fmtCurrency(r.total_efectivo)}</TableCell>
                           <TableCell>{fmtCurrency(r.total_qr)}</TableCell>
+                          <TableCell>{fmtCurrency(r.total_egresos)}</TableCell>
+                          <TableCell>{fmtCurrency(neto)}</TableCell>
                         </TableRow>
                       );
                     })}
@@ -756,6 +898,13 @@ export default function AdminReportes() {
               <div className="grid gap-3 md:hidden">
                 {datosDiarios.map((d) => {
                   const r = d.resumen || {};
+                  const ingreso = Number(r.total_general || 0);
+                  const egreso = Number(r.total_egresos || 0);
+                  const neto =
+                    r.ganancia_neta != null
+                      ? Number(r.ganancia_neta)
+                      : ingreso - egreso;
+
                   return (
                     <Card key={d.fecha} className="border-border/60">
                       <CardContent className="p-4 space-y-2">
@@ -784,6 +933,16 @@ export default function AdminReportes() {
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">QR</span>
                             <span>{fmtCurrency(r.total_qr)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Egresos</span>
+                            <span>{fmtCurrency(r.total_egresos)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">
+                              Ganancia neta
+                            </span>
+                            <span>{fmtCurrency(neto)}</span>
                           </div>
                         </div>
                       </CardContent>

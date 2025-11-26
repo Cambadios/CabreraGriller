@@ -72,7 +72,7 @@ const CATEGORIAS = [
 const AdminCompras = () => {
   const { token } = useAuth();
 
-  const [fechaFiltro, setFechaFiltro] = useState(hoyStr);
+  const [fechaFiltro, setFechaFiltro] = useState(hoyStr());
   const [compras, setCompras] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");

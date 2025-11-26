@@ -1,5 +1,5 @@
 // src/pages/cajero/CajeroPedidos.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { obtenerClientes } from "../../services/clienteService";
@@ -9,22 +9,40 @@ import { createPedido, actualizarPedido } from "../../services/pedidoService";
 // shadcn/ui
 import { Button } from "@/components/ui/button";
 import {
-  Card, CardContent, CardHeader, CardTitle, CardDescription,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -42,6 +60,7 @@ import {
   Truck,
   Store,
   HandCoins,
+  Printer,
 } from "lucide-react";
 
 const CajeroPedidos = () => {
@@ -77,6 +96,15 @@ const CajeroPedidos = () => {
   const [pagoModalAbierto, setPagoModalAbierto] = useState(false);
   const [metodoPagoModal, setMetodoPagoModal] = useState("EFECTIVO"); // EFECTIVO | QR | PENDIENTE
   const [montoRecibido, setMontoRecibido] = useState("");
+
+  // 🔢 Número de ticket local (se muestra en vista previa y ticket)
+  const [numeroTicket, setNumeroTicket] = useState(1);
+
+  // Al montar, leemos el último número de ticket usado en esta PC
+  useEffect(() => {
+    const last = Number(localStorage.getItem("cgr_ultimo_ticket") || "0");
+    setNumeroTicket(last + 1); // el siguiente a usar
+  }, []);
 
   useEffect(() => {
     if (esContinuacion) setMetodoPagoModal("PENDIENTE");
@@ -150,6 +178,157 @@ const CajeroPedidos = () => {
     [clientes, clienteSeleccionado]
   );
 
+  // =========================
+  //  HELPERS PARA EL TICKET
+  // =========================
+
+  const buildTicketData = useCallback(() => {
+    const servicioTexto =
+      tipoServicio === "MESA"
+        ? "En mesa"
+        : tipoServicio === "PARA_LLEVAR"
+        ? "Para llevar"
+        : tipoServicio === "RECOJO"
+        ? "Para recoger"
+        : "Domicilio";
+
+    const pagoTexto = esContinuacion
+      ? "PENDIENTE / NO PAGADO"
+      : metodoPagoModal === "EFECTIVO"
+      ? "Efectivo"
+      : metodoPagoModal === "QR"
+      ? "QR"
+      : "PENDIENTE / NO PAGADO";
+
+    const cajeroNombre =
+      usuario?.nombre ||
+      usuario?.nombre_completo ||
+      usuario?.username ||
+      "";
+
+    return {
+      fecha: new Date().toLocaleString("es-BO"),
+      clienteNombre: !esContinuacion ? clienteObj?.nombre_completo || null : null,
+      servicioTexto,
+      pagoTexto,
+      total,
+      items: items.map((it) => ({ ...it })), // copia
+      observaciones,
+      esContinuacion,
+      cajeroNombre,
+      numeroPedido: numeroTicket, // 🔹 este es el que mostramos
+    };
+  }, [
+    esContinuacion,
+    tipoServicio,
+    metodoPagoModal,
+    total,
+    items,
+    observaciones,
+    clienteObj,
+    usuario,
+    numeroTicket,
+  ]);
+
+  const imprimirTicket = useCallback((ticketData) => {
+    if (!ticketData || !ticketData.items || ticketData.items.length === 0) {
+      return;
+    }
+
+    const {
+      fecha,
+      clienteNombre,
+      servicioTexto,
+      pagoTexto,
+      total,
+      items,
+      observaciones,
+      esContinuacion,
+      cajeroNombre,
+      numeroPedido,
+    } = ticketData;
+
+    const lineas = [];
+
+    lineas.push("       CABRERAGRILLER");
+    lineas.push("   ----------------------");
+    if (numeroPedido) {
+      lineas.push(`Pedido N°: ${numeroPedido}`);
+    }
+    lineas.push(`Fecha:   ${fecha}`);
+    if (cajeroNombre) lineas.push(`Cajero:  ${cajeroNombre}`);
+    if (clienteNombre) lineas.push(`Cliente: ${clienteNombre}`);
+    lineas.push(`Servicio: ${servicioTexto}`);
+    lineas.push(`Pago:     ${pagoTexto}`);
+    lineas.push("   ----------------------");
+    lineas.push(esContinuacion ? "Nuevos platos:" : "Detalle del pedido:");
+
+    items.forEach((it) => {
+      const sub = (Number(it.precio) * it.cantidad).toFixed(2);
+      lineas.push(
+        `${it.cantidad} x ${it.nombre} @ ${Number(it.precio).toFixed(
+          2
+        )} = ${sub} Bs`
+      );
+    });
+
+    lineas.push("   ----------------------");
+    lineas.push(
+      `${esContinuacion ? "SUBTOTAL A AGREGAR" : "TOTAL"}: ${total.toFixed(
+        2
+      )} Bs`
+    );
+
+    if (!esContinuacion && pagoTexto.includes("PENDIENTE")) {
+      lineas.push("");
+      lineas.push("*** PENDIENTE DE PAGO ***");
+    }
+
+    if (observaciones) {
+      lineas.push("");
+      lineas.push(`Obs: ${observaciones}`);
+    }
+
+    lineas.push("");
+    lineas.push("Gracias por su preferencia ♥");
+
+    const ticketTexto = lineas.join("\n");
+
+    const safeText = ticketTexto
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+    const win = window.open("", "_blank", "width=400,height=600");
+    if (!win) return;
+
+    win.document.write(`
+      <html>
+        <head>
+          <title>Ticket</title>
+          <style>
+            body {
+              font-family: monospace;
+              font-size: 12px;
+              padding: 8px;
+              white-space: pre-wrap;
+            }
+            @media print {
+              body { margin: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          ${safeText}
+          <script>
+            window.print();
+          </script>
+        </body>
+      </html>
+    `);
+    win.document.close();
+  }, []);
+
   // agregar desde catálogo (respeta stock)
   const handleAgregarDesdeCatalogo = (plato) => {
     setMensajeOk("");
@@ -205,9 +384,7 @@ const CajeroPedidos = () => {
     const stock = plato?.stock_actual ?? Infinity;
 
     if (cant > stock) {
-      setError(
-        `No puedes poner más de ${stock} unidades (stock disponible).`
-      );
+      setError(`No puedes poner más de ${stock} unidades (stock disponible).`);
       return;
     }
 
@@ -221,9 +398,7 @@ const CajeroPedidos = () => {
   // abrir pago
   const handleAbrirModalPago = () => {
     if (!usuario?.id_usuario) {
-      setError(
-        "No se encontró id_usuario del cajero. Revisa AuthContext."
-      );
+      setError("No se encontró id_usuario del cajero. Revisa AuthContext.");
       return;
     }
     if (items.length === 0) {
@@ -236,8 +411,10 @@ const CajeroPedidos = () => {
     setPagoModalAbierto(true);
   };
 
-  // confirmar
+  // confirmar (nuevo o continuación)
   const handleConfirmarPagoYCrearPedido = async () => {
+    const ticketDataSnapshot = buildTicketData(); // incluye numeroTicket actual
+
     // NUEVO PEDIDO
     if (!esContinuacion) {
       if (metodoPagoModal === "EFECTIVO") {
@@ -305,11 +482,22 @@ const CajeroPedidos = () => {
           observaciones: observacionesFinal || null,
         };
 
-        if (clienteSeleccionado) payload.id_cliente = Number(clienteSeleccionado);
+        if (clienteSeleccionado)
+          payload.id_cliente = Number(clienteSeleccionado);
 
         await createPedido(token, payload);
 
-        setMensajeOk("✅ Pedido creado correctamente");
+        // imprime ticket con este número
+        imprimirTicket(ticketDataSnapshot);
+
+        // guardamos que este número ya se usó, y preparamos el siguiente
+        localStorage.setItem(
+          "cgr_ultimo_ticket",
+          String(numeroTicket)
+        );
+        setNumeroTicket((prev) => prev + 1);
+
+        setMensajeOk(`✅ Pedido ${ticketDataSnapshot.numeroPedido} creado`);
         setItems([]);
         setObservaciones("");
         setClienteSeleccionado("");
@@ -344,8 +532,16 @@ const CajeroPedidos = () => {
 
         await actualizarPedido(token, Number(pedidoExistenteId), detalles);
 
+        imprimirTicket(ticketDataSnapshot);
+
+        localStorage.setItem(
+          "cgr_ultimo_ticket",
+          String(numeroTicket)
+        );
+        setNumeroTicket((prev) => prev + 1);
+
         setMensajeOk(
-          `✅ Pedido #${pedidoExistenteId} actualizado (se sumaron los nuevos platos)`
+          `✅ Pedido pendiente actualizado (Ticket ${ticketDataSnapshot.numeroPedido})`
         );
         setItems([]);
         setPagoModalAbierto(false);
@@ -421,7 +617,8 @@ const CajeroPedidos = () => {
 
           {esContinuacion && (
             <Badge variant="secondary" className="mt-2 w-fit">
-              Continuando pedido pendiente #{pedidoExistenteId} (solo se suman nuevos platos)
+              Continuando pedido pendiente #{pedidoExistenteId} (solo se suman
+              nuevos platos)
             </Badge>
           )}
         </div>
@@ -484,7 +681,6 @@ const CajeroPedidos = () => {
               <div className="grid gap-2">
                 <Label>Cliente registrado</Label>
 
-                {/* ✅ FIX: SelectItem no puede tener value="" -> usamos ANONIMO */}
                 <Select
                   value={clienteSeleccionado || "ANONIMO"}
                   onValueChange={(val) =>
@@ -497,14 +693,17 @@ const CajeroPedidos = () => {
                   </SelectTrigger>
 
                   <SelectContent>
-                    <SelectItem value="ANONIMO">Sin cliente (anónimo)</SelectItem>
+                    <SelectItem value="ANONIMO">
+                      Sin cliente (anónimo)
+                    </SelectItem>
 
                     {clientes.map((c) => (
                       <SelectItem
                         key={c.id_cliente}
                         value={String(c.id_cliente)}
                       >
-                        {c.nombre_completo} {c.telefono ? `- ${c.telefono}` : ""}
+                        {c.nombre_completo}{" "}
+                        {c.telefono ? `- ${c.telefono}` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -540,9 +739,7 @@ const CajeroPedidos = () => {
                   {items.length} ítem(s)
                 </CardDescription>
               </div>
-              <Badge variant="outline">
-                Bs. {total.toFixed(2)}
-              </Badge>
+              <Badge variant="outline">Bs. {total.toFixed(2)}</Badge>
             </CardHeader>
 
             <CardContent className="space-y-3">
@@ -570,7 +767,8 @@ const CajeroPedidos = () => {
                             </p>
                           )}
                           <p className="text-xs font-medium mt-1">
-                            Subtotal: Bs. {(it.precio * it.cantidad).toFixed(2)}
+                            Subtotal: Bs.{" "}
+                            {(it.precio * it.cantidad).toFixed(2)}
                           </p>
                         </div>
 
@@ -718,7 +916,10 @@ const CajeroPedidos = () => {
                         ))}
 
                         <TableRow className="bg-muted/30">
-                          <TableCell colSpan={2} className="text-right font-semibold">
+                          <TableCell
+                            colSpan={2}
+                            className="text-right font-semibold"
+                          >
                             Total
                           </TableCell>
                           <TableCell className="text-right font-bold">
@@ -881,12 +1082,12 @@ const CajeroPedidos = () => {
           <DialogHeader>
             <DialogTitle>
               {esContinuacion
-                ? `Agregar al pedido #${pedidoExistenteId}`
+                ? `Agregar al pedido pendiente`
                 : "Pago y ticket"}
             </DialogTitle>
             <DialogDescription>
               {esContinuacion
-                ? "Solo se sumarán estos platos al pedido. No se cobra aquí."
+                ? "Solo se sumarán estos platos al pedido pendiente."
                 : "Selecciona método de pago y confirma el pedido."}
             </DialogDescription>
           </DialogHeader>
@@ -942,7 +1143,8 @@ const CajeroPedidos = () => {
                   <Alert>
                     <AlertTitle>Pedido pendiente</AlertTitle>
                     <AlertDescription className="text-xs">
-                      Este pedido seguirá en estado <b>PENDIENTE</b>. Solo se añade el subtotal.
+                      Este pedido seguirá en estado <b>PENDIENTE</b>. Solo se
+                      añade el subtotal.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -958,7 +1160,21 @@ const CajeroPedidos = () => {
                 <ScrollArea className="h-72 rounded-lg border bg-muted/30 p-3 text-xs font-mono">
                   <div className="text-center mb-2">
                     <p className="font-bold text-sm">CabreraGriller</p>
-                    <p>{new Date().toLocaleString()}</p>
+                    <p className="text-[11px] font-semibold">
+                      Pedido N°: {numeroTicket}
+                    </p>
+                    {usuario && (
+                      <p className="text-[11px]">
+                        Cajero:{" "}
+                        {usuario.nombre ||
+                          usuario.nombre_completo ||
+                          usuario.username ||
+                          "—"}
+                      </p>
+                    )}
+                    <p className="text-[11px]">
+                      {new Date().toLocaleString("es-BO")}
+                    </p>
                   </div>
 
                   {clienteObj && !esContinuacion && (
@@ -996,27 +1212,6 @@ const CajeroPedidos = () => {
                     </span>
                   </p>
 
-                  {!esContinuacion &&
-                    metodoPagoModal === "EFECTIVO" &&
-                    Number(montoRecibido || 0) > 0 && (
-                      <>
-                        <p>
-                          Recibido:{" "}
-                          <span className="font-semibold">
-                            Bs. {Number(montoRecibido).toFixed(2)}
-                          </span>
-                        </p>
-                        {cambio > 0 && (
-                          <p>
-                            Cambio:{" "}
-                            <span className="font-semibold">
-                              Bs. {cambio.toFixed(2)}
-                            </span>
-                          </p>
-                        )}
-                      </>
-                    )}
-
                   <hr className="my-2 border-border" />
                   <p className="font-semibold mb-1">
                     {esContinuacion ? "Nuevos platos:" : "Detalle:"}
@@ -1024,8 +1219,9 @@ const CajeroPedidos = () => {
 
                   {items.map((it) => (
                     <p key={it.id_plato}>
-                      {it.cantidad} x {it.nombre} @ Bs. {it.precio.toFixed(2)} ={" "}
-                      Bs. {(it.precio * it.cantidad).toFixed(2)}
+                      {it.cantidad} x {it.nombre} @ Bs.{" "}
+                      {it.precio.toFixed(2)} = Bs.{" "}
+                      {(it.precio * it.cantidad).toFixed(2)}
                     </p>
                   ))}
 
@@ -1074,6 +1270,17 @@ const CajeroPedidos = () => {
               disabled={enviando}
             >
               Cancelar
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2"
+              onClick={() => imprimirTicket(buildTicketData())}
+              disabled={items.length === 0}
+            >
+              <Printer className="size-4" />
+              Imprimir ticket
             </Button>
 
             <Button

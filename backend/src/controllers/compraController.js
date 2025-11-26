@@ -8,7 +8,17 @@ import { getIO } from '../socket.js';
  */
 export const crearCompraHandler = async (req, res) => {
   try {
-    const id_usuario = req.id_usuario?.id_usuario; // viene del token
+    // 🧠 Obtener id_usuario de forma robusta según cómo lo deje el middleware
+    const id_usuario =
+      req.id_usuario?.id_usuario ?? // caso: req.id_usuario = { id_usuario, rol, ... }
+      req.usuario?.id_usuario ??    // caso: req.usuario = { id_usuario, rol, ... }
+      req.id_usuario ??             // caso: req.id_usuario = 5 (número)
+      null;
+
+    // 👀 Si quieres ver qué llega exactamente, descomenta:
+    // console.log('🔎 req.id_usuario:', req.id_usuario);
+    // console.log('🔎 req.usuario:', req.usuario);
+    // console.log('🔎 id_usuario usado:', id_usuario);
 
     const {
       fecha,

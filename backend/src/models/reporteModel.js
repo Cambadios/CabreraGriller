@@ -1,18 +1,35 @@
 // backend/src/models/reporteModel.js
 import { query } from '../db/db.js';
 
-// Resumen general del día (totales por forma de pago)
+// Resumen general del día (ingresos, formas de pago, egresos y ganancia neta)
 export const getResumenDia = async (fecha) => {
   const { rows } = await query(
     `
+    WITH ventas AS (
+      SELECT
+        COALESCE(SUM(total), 0) AS total_general,
+        COALESCE(SUM(CASE WHEN tipo_pago = 'EFECTIVO' THEN total ELSE 0 END), 0) AS total_efectivo,
+        COALESCE(SUM(CASE WHEN tipo_pago = 'QR' THEN total ELSE 0 END), 0)       AS total_qr,
+        COUNT(*) AS total_pedidos
+      FROM pedidos
+      WHERE fecha_hora::date = $1
+        AND estado = 'PAGADO'
+    ),
+    egresos AS (
+      SELECT
+        COALESCE(SUM(monto), 0) AS total_egresos
+      FROM compras
+      WHERE fecha::date = $1
+    )
     SELECT
-      COALESCE(SUM(total), 0)                         AS total_general,
-      COALESCE(SUM(CASE WHEN tipo_pago = 'EFECTIVO' THEN total ELSE 0 END), 0) AS total_efectivo,
-      COALESCE(SUM(CASE WHEN tipo_pago = 'QR' THEN total ELSE 0 END), 0)       AS total_qr,
-      COUNT(*)                                       AS total_pedidos
-    FROM pedidos
-    WHERE fecha_hora::date = $1
-      AND estado = 'PAGADO';
+      v.total_general,
+      v.total_efectivo,
+      v.total_qr,
+      v.total_pedidos,
+      e.total_egresos,
+      (v.total_general - e.total_egresos) AS ganancia_neta
+    FROM ventas v
+    CROSS JOIN egresos e;
     `,
     [fecha]
   );
