@@ -2,6 +2,7 @@
 
 // URL base de la API (ajusta VITE_API_URL en tu .env del frontend)
 const API_URL = import.meta.env.VITE_API_URL;
+
 const BASE_URL = `${API_URL}/api/clientes`;
 
 // Construir headers (con o sin token)
