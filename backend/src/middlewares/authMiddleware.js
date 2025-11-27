@@ -1,26 +1,27 @@
-// backend/src/middlewares/authMiddleware.js
+// middlewares/authMiddleware.js
 import jwt from 'jsonwebtoken';
 
-// Verifica token
 export const verificarToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader)
-    return res.status(401).json({ mensaje: 'Token no proporcionado' });
+  // 🔹 Dejar pasar los preflight (OPTIONS) sin exigir token
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
+  const authHeader = req.headers['authorization'];
+  if (!authHeader) {
+    return res.status(401).json({ mensaje: 'No se proporcionó token' });
+  }
 
   const token = authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ mensaje: 'Token inválido' });
+  }
+
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'clave_super_secreta');
-    req.usuario = decoded; // usuario logueado disponible
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.usuario = decoded;
     next();
   } catch (error) {
-    console.error('❌ Token inválido:', error);
-    res.status(403).json({ mensaje: 'Token inválido o expirado' });
+    return res.status(401).json({ mensaje: 'Token no válido' });
   }
-};
-
-// Verifica si es ADMIN
-export const soloAdmin = (req, res, next) => {
-  if (req.usuario.rol !== 'ADMIN')
-    return res.status(403).json({ mensaje: 'Acceso solo para administradores' });
-  next();
 };

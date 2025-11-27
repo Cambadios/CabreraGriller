@@ -9,8 +9,8 @@ import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import http from 'http'; // 👈 NUEVO
-import { initSocket } from './socket.js'; // 👈 NUEVO
+import http from 'http';
+import { initSocket } from './socket.js';
 
 import { pingDB } from './db/db.js';
 
@@ -28,25 +28,40 @@ import { errorHandler } from './middlewares/errorHandler.js';
 
 const app = express();
 
-// Para poder resolver rutas absolutas
+// Para rutas absolutas
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Middleware
+// 🔹 CORS BIEN CONFIGURADO
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://cabrera-griller.vercel.app',
+];
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
+
+
+
+// Middleware body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors());
+
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
 
-// 📂 Servir archivos estáticos de imágenes (subidas)
+// Archivos estáticos
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// Variables globales
 const PORT = process.env.PORT || 3000;
 
-// ENDPOINT health check
+// Healthcheck
 app.get('/health', async (_req, res, next) => {
   try {
     const dbOk = await pingDB();
@@ -62,35 +77,31 @@ app.get('/health', async (_req, res, next) => {
   }
 });
 
-// Rutas MVC
+// Rutas públicas
 app.use('/api/auth', authRoutes);
 
-// Todas estas rutas requieren token
+// Rutas protegidas
 app.use('/api/platos', verificarToken, platoRoutes);
 app.use('/api/clientes', verificarToken, clienteRoutes);
 app.use('/api/pedidos', verificarToken, pedidoRoutes);
 app.use('/api/tickets', verificarToken, ticketRoutes);
 app.use('/api/usuarios', verificarToken, usuarioRoutes);
 app.use('/api/reportes', verificarToken, reporteRoutes);
-
-// ⚠️ OJO: faltaba verificarToken aquí si compras es protegida
 app.use('/api/compras', verificarToken, compraRoutes);
 
-// 404 básico
+// 404
 app.use((req, res) => {
   res
     .status(404)
     .json({ message: `Ruta no encontrada: ${req.method} ${req.originalUrl}` });
 });
 
-// Manejo de errores global
+// Errores globales
 app.use(errorHandler);
 
-// ✅ Crear server HTTP y levantar sockets
 const httpServer = http.createServer(app);
 initSocket(httpServer);
 
-// INICIO DEL SERVIDOR
 httpServer.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
   console.log(`🌐 Ambiente: ${process.env.NODE_ENV || 'development'}`);

@@ -75,7 +75,7 @@ import {
   Filter,
 } from "lucide-react";
 
-const ROLES = ["ADMIN", "MOZO", "COCINA", "CAJA"];
+const ROLES = ["ADMIN", "MOZO", "COCINA", "CAJERO"];
 
 export default function UsuariosPage() {
   const { token } = useAuth();
