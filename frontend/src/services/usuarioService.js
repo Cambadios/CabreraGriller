@@ -1,7 +1,7 @@
 // src/services/usuarioService.js
 import axios from 'axios';
 
-const API_URL = 'http://localhost:3000/api/usuarios';
+const API_URL = import.meta.env.VITE_API_URL;
 
 // Config general (adjunta token si existe)
 const getAuthHeaders = () => {
