@@ -1,6 +1,4 @@
-// backend/src/routes/platoRoutes.js
 import express from 'express';
-import multer from 'multer';
 import {
   listarPlatos,
   obtenerPlato,
@@ -9,19 +7,9 @@ import {
   eliminarPlatoHandler,
 } from '../controllers/platoController.js';
 
+import uploadPlato from '../middlewares/uploadPlato.js';
+
 const router = express.Router();
-
-// Configuración de multer para subir imágenes
-const storage = multer.diskStorage({
-  destination: 'uploads/platos', // carpeta donde se guardan las imágenes
-  filename: (req, file, cb) => {
-    const ext = file.originalname.split('.').pop();
-    const nombreArchivo = `plato_${Date.now()}.${ext}`;
-    cb(null, nombreArchivo);
-  },
-});
-
-const upload = multer({ storage });
 
 // GET /api/platos
 router.get('/', listarPlatos);
@@ -29,11 +17,11 @@ router.get('/', listarPlatos);
 // GET /api/platos/:id
 router.get('/:id', obtenerPlato);
 
-// POST /api/platos  (con imagen opcional)
-router.post('/', upload.single('imagen'), crearPlatoHandler);
+// POST /api/platos (imagen → Cloudinary)
+router.post('/', uploadPlato.single('imagen'), crearPlatoHandler);
 
-// PUT /api/platos/:id (con posible nueva imagen)
-router.put('/:id', upload.single('imagen'), actualizarPlatoHandler);
+// PUT /api/platos/:id (imagen opcional → Cloudinary)
+router.put('/:id', uploadPlato.single('imagen'), actualizarPlatoHandler);
 
 // DELETE /api/platos/:id
 router.delete('/:id', eliminarPlatoHandler);

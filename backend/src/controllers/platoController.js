@@ -45,7 +45,7 @@ export const crearPlatoHandler = async (req, res) => {
 
     let imagen_url = null;
     if (req.file) {
-      imagen_url = `${req.protocol}://${req.get('host')}/uploads/platos/${req.file.filename}`;
+      imagen_url = req.file.path; // 🌩️ Cloudinary URL
     }
 
     const nuevoPlato = await createPlato({
@@ -89,10 +89,9 @@ export const actualizarPlatoHandler = async (req, res) => {
       observaciones,
     };
 
-    if (req.file) {
-      datosActualizados.imagen_url =
-        `${req.protocol}://${req.get('host')}/uploads/platos/${req.file.filename}`;
-    }
+if (req.file) {
+  datosActualizados.imagen_url = req.file.path;
+}
 
     const actualizado = await updatePlato(id, datosActualizados);
     if (!actualizado) return res.status(404).json({ mensaje: 'Plato no encontrado' });
