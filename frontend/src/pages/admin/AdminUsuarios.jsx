@@ -192,9 +192,9 @@ export default function UsuariosPage() {
           estado: formData.estado,
         };
         if (formData.password.trim() !== "") payload.password = formData.password;
-        await updateUsuario(token, editId, payload);
+        await updateUsuario(editId, payload);
       } else {
-        await createUsuario(token, {
+        await createUsuario({
           nombre_completo: formData.nombre_completo,
           alias: formData.alias,
           password: formData.password,

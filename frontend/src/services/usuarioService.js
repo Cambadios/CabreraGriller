@@ -23,10 +23,9 @@ export const fetchUsuarios = async () => {
 // ➕ Crear nuevo (POST /api/usuarios)
 export const createUsuario = async (data) => {
   const res = await axios.post(USUARIOS_URL, data, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-    },
+    headers: 
+      getAuthHeaders()
+    ,
   });
   return res.data;
 };
@@ -34,10 +33,7 @@ export const createUsuario = async (data) => {
 // ✏️ Actualizar (PUT /api/usuarios/:id)
 export const updateUsuario = async (id, data) => {
   const res = await axios.put(`${USUARIOS_URL}/${id}`, data, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-    },
+    headers: getAuthHeaders()
   });
   return res.data;
 };
